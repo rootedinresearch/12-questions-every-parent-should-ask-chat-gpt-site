@@ -14,6 +14,12 @@ const SCHOOL_SMS = "+18179735455";
 const SCHOOL_EMAIL = "goswimarlsgpra@britishswimschool.com";
 const MAX_SMS_LENGTH = 600;
 
+export const LOCATION_DAYS: Record<string, string[]> = {
+  arlington: ["Monday", "Wednesday", "Thursday", "Saturday"],
+  mansfield: ["Tuesday", "Thursday", "Friday", "Sunday"],
+  grandPrairie: ["Monday", "Tuesday", "Wednesday", "Saturday"]
+};
+
 const AGE_GROUPS = [
   { id: "under3", label: "Under 3", detail: "Parent & Me" },
   { id: "child", label: "Ages 3–12", detail: "Child lessons" },
@@ -235,6 +241,17 @@ export default function HoldForm() {
   const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState("");
   const [showValidationErrors, setShowValidationErrors] = useState(false);
+
+  useEffect(() => {
+    if (step > 1) {
+      document.documentElement.classList.add("wizard-active-steps");
+    } else {
+      document.documentElement.classList.remove("wizard-active-steps");
+    }
+    return () => {
+      document.documentElement.classList.remove("wizard-active-steps");
+    };
+  }, [step]);
   const current = swimmers[activeSwimmer];
 
   useEffect(() => {
@@ -491,7 +508,7 @@ export default function HoldForm() {
     {step === 4 && <>
       <div className="form-section-heading"><span>4</span><div><p>Review</p><h2>Everything we need to help your family.</h2></div></div>
       <div className="review-family"><strong>{family.firstName} {family.lastName}</strong><span>{family.email} · {family.phone}</span></div>
-      <div className="review-swimmers">{swimmers.map((swimmer) => <article key={swimmer.id}><header><div><strong>{swimmer.firstName}</strong><small>{swimmer.dob} · {swimmer.gender}</small></div><b>{startingLevel(swimmer)}</b></header><p>{LOCATIONS.find((location) => location.id === swimmer.location)?.name}{swimmer.preferredSchedule ? ` · ${swimmer.preferredSchedule}` : ""}</p></article>)}</div>
+      <div className="review-swimmers">{swimmers.map((swimmer) => <article key={swimmer.id}><header><div><strong>{swimmer.firstName}</strong><small>{swimmer.dob} · {swimmer.gender}</small></div><b>{startingLevel(swimmer)}</b></header><p>{swimmer.location ? swimmer.location.split(",").map(id => LOCATIONS.find(l => l.id === id)?.name).filter(Boolean).join(", ") : "No location selected"}{swimmer.preferredSchedule ? ` · ${swimmer.preferredSchedule}` : ""}</p></article>)}</div>
       <div className="review-referral"><span>How you heard about us</span><strong>{referral.source}{referral.friendName ? ` · Referred by ${referral.friendName}` : referral.other ? ` · ${referral.other}` : ""}</strong></div>
       <div className="assessment-disclaimer"><strong>Placement note</strong><p>These levels are estimates based on your answers. Every swimmer receives an assessment during the first lesson. If another level is a better fit, we will make the adjustment.</p></div>
       <label className="honeypot" aria-hidden="true">Company<input name="company" tabIndex={-1} autoComplete="off" /></label>
