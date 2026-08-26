@@ -148,11 +148,15 @@ export default function Home() {
                 <span><strong>Find My Class Time</strong><small>Use our starting level estimator</small></span>
                 <span aria-hidden="true">→</span>
               </Link>
+              <Link href="/hold" className="location-link">
+                <span><strong>Instant Family Quote</strong><small>Get a quick tuition estimate</small></span>
+                <span aria-hidden="true">→</span>
+              </Link>
             </div>
             {pdfSent ? (
               <div className="pdf-success-box">
                 <strong>✓ Request Sent!</strong>
-                <p>Opening your mail app to request the PDF to: {pdfEmail}</p>
+                <p>We have received your request and will email the PDF copy to: {pdfEmail}</p>
               </div>
             ) : (
               <div className="pdf-request-box">
