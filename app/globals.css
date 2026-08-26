@@ -784,3 +784,18 @@ button:focus-visible,a:focus-visible { outline:3px solid var(--yellow); outline-
   border-width: 3px !important;
   text-transform: uppercase;
 }
+
+/* Hide hero header and sidebar options on steps 2-4 */
+.wizard-active-steps .hold-hero {
+  display: none !important;
+}
+.wizard-active-steps .hold-options {
+  display: none !important;
+}
+.wizard-active-steps .hold-content {
+  grid-template-columns: 1fr !important;
+  max-width: 720px;
+  margin: 0 auto;
+  padding-top: 24px !important;
+  padding-bottom: 24px !important;
+}

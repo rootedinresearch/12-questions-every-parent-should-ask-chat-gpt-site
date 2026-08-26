@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState, useEffect } from "react";
 
 /* ------------------------------------------------------------------ *
  * Paste your Apps Script /exec URL here. Leave "" to disable logging
@@ -236,6 +236,17 @@ export default function HoldForm() {
   const [message, setMessage] = useState("");
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const current = swimmers[activeSwimmer];
+
+  useEffect(() => {
+    if (step > 1) {
+      document.documentElement.classList.add("wizard-active-steps");
+    } else {
+      document.documentElement.classList.remove("wizard-active-steps");
+    }
+    return () => {
+      document.documentElement.classList.remove("wizard-active-steps");
+    };
+  }, [step]);
 
   const profileValid = useMemo(() => swimmers.length > 0 && swimmers.every((swimmer) => swimmer.firstName.trim() && validDob(swimmer.dob) && swimmer.gender) && family.firstName.trim() && family.lastName.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(family.email) && family.phone.replace(/\D/g, "").length >= 10 && family.smsConsent, [swimmers, family]);
   const classValid = swimmers.length > 0 && swimmers.every((swimmer) => swimmer.location) && referral.source && (referral.source !== "Friend or referral" || referral.friendName.trim());
