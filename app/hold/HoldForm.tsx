@@ -67,6 +67,13 @@ function formatDob(value: string) {
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
 
+function formatPhone(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
 function smartFormatDob(value: string) {
   const clean = value.trim();
   if (!clean) return "";
@@ -144,6 +151,15 @@ function validDob(value: string) {
   const year = Number(match[3]);
   const date = new Date(year, month - 1, day);
   return month >= 1 && month <= 12 && date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day && date <= new Date();
+}
+
+const BEGINNER_LEVELS = ["Tadpole", "Starfish", "Young Adult 1", "Adult 1"];
+
+function getLevelDisplay(level: string) {
+  if (BEGINNER_LEVELS.includes(level)) {
+    return `${level} (Beginners)`;
+  }
+  return level;
 }
 
 const LEVELS: Record<AgeGroup, string[]> = {
@@ -477,7 +493,7 @@ export default function HoldForm() {
           <label>First name<input className={showValidationErrors && !family.firstName.trim() ? "invalid-field" : ""} value={family.firstName} onChange={(event) => setFamily({ ...family, firstName: event.target.value })} autoComplete="given-name" required /></label>
           <label>Last name<input className={showValidationErrors && !family.lastName.trim() ? "invalid-field" : ""} value={family.lastName} onChange={(event) => setFamily({ ...family, lastName: event.target.value })} autoComplete="family-name" required /></label>
           <label>Email address<input className={showValidationErrors && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(family.email) ? "invalid-field" : ""} value={family.email} onChange={(event) => setFamily({ ...family, email: event.target.value })} type="email" autoComplete="email" required /></label>
-          <label>Mobile phone<input className={showValidationErrors && family.phone.replace(/\D/g, "").length < 10 ? "invalid-field" : ""} value={family.phone} onChange={(event) => setFamily({ ...family, phone: event.target.value })} type="tel" autoComplete="tel" inputMode="tel" required /></label>
+          <label>Mobile phone<input className={showValidationErrors && family.phone.replace(/\D/g, "").length < 10 ? "invalid-field" : ""} value={family.phone} onChange={(event) => setFamily({ ...family, phone: formatPhone(event.target.value) })} type="tel" autoComplete="tel" inputMode="tel" required /></label>
         </div>
         <div className="form-section-heading swimmer-heading"><span>3</span><div><p>Swimmer profiles</p><h2>Tell us who will be swimming.</h2></div></div>
         <div className="swimmer-profile-list">
@@ -505,7 +521,11 @@ export default function HoldForm() {
         <select className="level-select" value={current.placementMode === "assessment" && !current.selectedLevel ? "__assessment__" : current.selectedLevel} onChange={(event) => chooseLevelPath(event.target.value)}>
           <option value="">Choose a known level or get help</option>
           <option value="__assessment__">I’m not sure — help me choose</option>
-          <optgroup label="Known level">{LEVELS[current.ageGroup].map((level) => <option key={level} value={level}>{level}</option>)}</optgroup>
+          <optgroup label="Known level">
+            {LEVELS[current.ageGroup]
+              .filter(level => level !== "Dolphin" || current.adaptive === "yes")
+              .map((level) => <option key={level} value={level}>{getLevelDisplay(level)}</option>)}
+          </optgroup>
         </select>
       </label>
       {current.placementMode === "assessment" && <div className="level-questions">

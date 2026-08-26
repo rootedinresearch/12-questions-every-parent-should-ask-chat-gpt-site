@@ -28,7 +28,7 @@ export default function AnswersPage() {
       </header>
 
       <section className="answers-hero">
-        <p className="answers-kicker">All About British Swim School of Arlington, Grand Prairie, and Mansfield</p>
+        
         <h1>Still thinking about swim lessons?</h1>
         <p>Here are the answers families ask us for most—pricing, available class times, flexibility, starting level, and how our two-class trial works.</p>
         <nav className="topic-nav" aria-label="Jump to a topic">

@@ -15,7 +15,7 @@ export default function HoldPage() {
         <a className="header-call" href="tel:+18179735455">817-973-5455</a>
       </header>
       <section className="hold-hero">
-        <div><p className="answers-kicker">All About British Swim School of Arlington, Grand Prairie, and Mansfield</p><h1>Let’s find your class time.</h1><p>Answer a few questions about your swimmer. We’ll estimate the right starting level, then text you the open class times that fit your schedule.</p></div>
+        <div><h1>Let’s find your class time.</h1><p>Answer a few questions about your swimmer. We’ll estimate the right starting level, then text you the open class times that fit your schedule.</p></div>
         <div className="hold-timeline" aria-label="What happens next"><span><b>1</b><strong>Share details</strong><small>Family and swimmer information</small></span><span><b>2</b><strong>Confirm level</strong><small>We identify the right starting point</small></span><span><b>3</b><strong>Choose a class</strong><small>We review current availability</small></span><span><b>4</b><strong>Get your options</strong><small>We text you the class times that fit</small></span></div>
       </section>
 
