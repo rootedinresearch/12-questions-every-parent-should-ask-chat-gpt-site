@@ -9,9 +9,9 @@ const SCHOOL_SMS = "+18179735455";
 const SCHOOL_EMAIL = "goswimarlsgpra@britishswimschool.com";
 
 export const LOCATION_DAYS: Record<string, string[]> = {
-  arlington: ["Monday", "Wednesday", "Thursday", "Saturday"],
-  mansfield: ["Tuesday", "Thursday", "Friday", "Sunday"],
-  grandPrairie: ["Monday", "Tuesday", "Wednesday", "Saturday"]
+  arlington: ["Tuesday", "Friday"],
+  mansfield: ["Thursday", "Friday", "Saturday"],
+  grandPrairie: ["Monday", "Wednesday", "Saturday"]
 };
 
 interface JackrabbitClass {
@@ -910,7 +910,7 @@ export default function HoldForm() {
                   return (
                     <div key={swimmer.id} style={{ border: '1px solid #eef2ff', borderRadius: '16px', padding: '20px', background: '#fafbfe' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                        <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--navy)' }}>Swimmer {idx + 1}</span>
+                        <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--navy)' }}>{AGE_GROUPS.find(g => g.id === swimmer.ageGroup)?.label || ("Swimmer " + (idx + 1))}</span>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           <span style={{ fontSize: '9px', fontWeight: '800', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                             {AGE_GROUPS.find(g => g.id === swimmer.ageGroup)?.label}
@@ -945,24 +945,24 @@ export default function HoldForm() {
                           <>
                             <button
                               type="button"
-                              onClick={() => updateSwimmer(swimmer.id, { pace: "unlimited" })}
-                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "unlimited" ? 'var(--navy)' : '#fff', color: swimmer.pace === "unlimited" ? '#fff' : 'var(--navy)' }}
+                              onClick={() => updateSwimmer(swimmer.id, { pace: "foundation" })}
+                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '11px', fontWeight: '800', cursor: 'pointer', background: swimmer.pace === "foundation" ? 'var(--navy)' : '#fff', color: swimmer.pace === "foundation" ? '#fff' : 'var(--navy)' }}
                             >
-                              Elite
+                              1x per week
                             </button>
                             <button
                               type="button"
                               onClick={() => updateSwimmer(swimmer.id, { pace: "standard" })}
-                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "standard" ? 'var(--navy)' : '#fff', color: swimmer.pace === "standard" ? '#fff' : 'var(--navy)' }}
+                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '11px', fontWeight: '800', cursor: 'pointer', background: swimmer.pace === "standard" ? 'var(--navy)' : '#fff', color: swimmer.pace === "standard" ? '#fff' : 'var(--navy)' }}
                             >
-                              Standard
+                              2x per week
                             </button>
                             <button
                               type="button"
-                              onClick={() => updateSwimmer(swimmer.id, { pace: "foundation" })}
-                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "foundation" ? 'var(--navy)' : '#fff', color: swimmer.pace === "foundation" ? '#fff' : 'var(--navy)' }}
+                              onClick={() => updateSwimmer(swimmer.id, { pace: "unlimited" })}
+                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '11px', fontWeight: '800', cursor: 'pointer', background: swimmer.pace === "unlimited" ? 'var(--navy)' : '#fff', color: swimmer.pace === "unlimited" ? '#fff' : 'var(--navy)' }}
                             >
-                              Foundation
+                              Unlimited Swim
                             </button>
                           </>
                         )}
@@ -1007,7 +1007,7 @@ export default function HoldForm() {
                       <Fragment key={item.swimmerId}>
                         <tr style={{ background: '#f1f5f9' }}>
                           <td colSpan={4} style={{ padding: '6px 12px', fontWeight: '850', color: 'var(--navy)', textTransform: 'uppercase', fontSize: '9px', letterSpacing: '0.04em' }}>
-                            <span style={{ color: '#c8102e', marginRight: '6px' }}>●</span> Swimmer {idx + 1} — Tuition Breakdown
+                            <span style={{ color: '#c8102e', marginRight: '6px' }}>●</span> {AGE_GROUPS.find(g => g.id === item.ageGroup)?.label || ("Swimmer " + (idx + 1))} — Tuition Breakdown
                           </td>
                         </tr>
                         <tr style={{ borderBottom: '1px solid #eef2ff' }}>
@@ -1297,7 +1297,7 @@ export default function HoldForm() {
 
 
 
-              const selectedNames = swimmer.location ? LOCATIONS.find(l => l.id === swimmer.location)?.name || "" : "";
+              const selectedNames = locationsArray.map(id => LOCATIONS.find(l => l.id === id)?.name).filter(Boolean).join(", ");
               const preferredArray = swimmer.preferredSchedule ? swimmer.preferredSchedule.split(",").map(d => d.trim()).filter(Boolean) : [];
 
               return (
@@ -1306,10 +1306,23 @@ export default function HoldForm() {
                   
                   <div className="pool-choices">
                     {LOCATIONS.map((location) => {
-                      const isSelected = swimmer.location === location.id;
+                      const isSelected = locationsArray.includes(location.id);
+                      const toggleLocation = () => {
+                        let nextLocs;
+                        if (isSelected) {
+                          nextLocs = locationsArray.filter(id => id !== location.id);
+                        } else {
+                          nextLocs = [...locationsArray, location.id];
+                        }
+                        // Clear preferred days that are no longer available after location change
+                        const newDaysSet = new Set<string>();
+                        nextLocs.forEach(id => (LOCATION_DAYS[id] || []).forEach(d => newDaysSet.add(d)));
+                        const filteredDays = preferredArray.filter(d => newDaysSet.has(d));
+                        updateSwimmer(swimmer.id, { location: nextLocs.join(","), preferredSchedule: filteredDays.join(", ") });
+                      };
                       return (
                         <label key={location.id} className={isSelected ? "selected" : ""} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '16px', border: '1px solid #dce3ef', borderRadius: '12px', marginBottom: '10px', cursor: 'pointer' }}>
-                          <input type="radio" name={"location_" + swimmer.id} checked={isSelected} onChange={() => updateSwimmer(swimmer.id, { location: location.id, preferredSchedule: "" })} style={{ width: '18px', height: '18px' }} />
+                          <input type="checkbox" name={"location_" + swimmer.id} checked={isSelected} onChange={toggleLocation} style={{ width: '18px', height: '18px' }} />
                           <strong style={{ fontSize: '15px', color: 'var(--navy)' }}>{location.name} - {location.detail}</strong>
                         </label>
                       );
