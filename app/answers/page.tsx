@@ -23,7 +23,7 @@ export default function AnswersPage() {
   return (
     <main className="answers-shell">
       <header className="answers-header">
-        <Link href="/" className="answers-brand" aria-label="British Swim School parent guide"><img src="/bss-logo.jpg" alt="British Swim School — Every Age. Every Stage." /></Link>
+        <Link href="/" className="answers-brand" aria-label="British Swim School parent guide"><img src="/bss-logo.png" alt="British Swim School — Every Age. Every Stage." /></Link>
         <a className="header-call" href="tel:+18179735455">817-973-5455</a>
       </header>
 
@@ -32,7 +32,7 @@ export default function AnswersPage() {
         <h1>Still thinking about swim lessons?</h1>
         <p>Here are the answers families ask us for most—pricing, available class times, flexibility, starting level, and how our two-class trial works.</p>
         <nav className="topic-nav" aria-label="Jump to a topic">
-          <a href="#pricing">Pricing</a><a href="#availability">Availability</a><a href="#flexibility">Flexibility</a><a href="#starting-level">Starting level</a><a href="#trial">Trial classes</a><Link href="/hold">Find my class time</Link><a href="#enroll">Enroll now</a>
+          <a href="#pricing">Pricing</a><a href="#flexibility">Flexibility</a><a href="#trial">Trial classes</a><a href="#starting-level">Starting level</a><a href="#availability">Availability</a><Link href="/hold">Find my class time</Link><a href="#enroll">Enroll now</a>
         </nav>
       </section>
 
@@ -66,26 +66,24 @@ export default function AnswersPage() {
         </div>
       </section>
 
-      <section className="answer-section alt-section" id="availability">
-        <div className="section-heading"><span>02</span><div><p>Availability</p><h2>See live class times at your preferred pool.</h2></div></div>
-        <p className="section-intro">Availability changes as families enroll and move up. Choose a location to see the most current schedule and open classes.</p>
-        <div className="answers-location-grid">
-          {locations.map((location) => <a href={location.href} target="_blank" rel="noreferrer" key={location.name}><span><strong>{location.name}</strong><small>{location.detail}</small></span><b aria-hidden="true">→</b></a>)}
-        </div>
+      <section className="answer-section alt-section" id="flexibility">
+        <div className="section-heading"><span>02</span><div><p>Flexibility</p><h2>Built for real family schedules.</h2></div></div>
+        <ul className="check-list" style={{ maxWidth: '680px', margin: '25px auto 0' }}>
+          <li>Month-to-month enrollment with no long-term contract</li>
+          <li>30-day notice to pause or cancel</li>
+          <li>Change your lesson pace with notice</li>
+          <li>Makeup credits do not expire while your account remains active</li>
+        </ul>
       </section>
 
-      <section className="answer-section split-section">
-        <article id="flexibility">
-          <div className="section-heading compact"><span>03</span><div><p>Flexibility</p><h2>Built for real family schedules.</h2></div></div>
-          <ul className="check-list">
-            <li>Month-to-month enrollment with no long-term contract</li>
-            <li>30-day notice to pause or cancel</li>
-            <li>Change your lesson pace with notice</li>
-            <li>Makeup credits do not expire while your account remains active</li>
-          </ul>
-        </article>
-        <article id="starting-level">
-          <div className="section-heading compact"><span>04</span><div><p>Starting level</p><h2>We will help place your swimmer.</h2></div></div>
+      <section className="trial-section" id="trial">
+        <div className="trial-badge">3</div>
+        <div><p className="answers-kicker">Two-class money-back trial</p><h2>Give your swimmer time to settle in.</h2><p>The trial is secured through regular enrollment, so full monthly tuition and the enrollment fee are charged when you enroll. Attend the first two consecutive classes. If we are not the right fit after class two, we will refund all tuition paid and the enrollment fee. No questions asked.</p></div>
+      </section>
+
+      <section className="answer-section" id="starting-level">
+        <div className="section-heading"><span>04</span><div><p>Starting level</p><h2>We will help place your swimmer.</h2></div></div>
+        <div style={{ maxWidth: '680px', margin: '25px auto 0' }}>
           <p>Level is based on age, comfort, and current skills—not just whether someone has taken lessons before.</p>
           <div className="level-list">
             <span><strong>Under 3</strong> Parent-and-child and early survival levels</span>
@@ -93,13 +91,16 @@ export default function AnswersPage() {
             <span><strong>Teens & adults</strong> Beginner through advanced instruction</span>
             <span><strong>DOLPHIN</strong> Adaptive aquatics with individualized support</span>
           </div>
-          <p className="assessment-note">Your first lesson includes an assessment. If the starting level is not right, we adjust placement.</p>
-        </article>
+          <p className="assessment-note" style={{ marginTop: '18px' }}>Your first lesson includes an assessment. If the starting level is not right, we adjust placement.</p>
+        </div>
       </section>
 
-      <section className="trial-section" id="trial">
-        <div className="trial-badge">2</div>
-        <div><p className="answers-kicker">Two-class money-back trial</p><h2>Give your swimmer time to settle in.</h2><p>The trial is secured through regular enrollment, so full monthly tuition and the enrollment fee are charged when you enroll. Attend the first two consecutive classes. If we are not the right fit after class two, we will refund all tuition paid and the enrollment fee. No questions asked.</p></div>
+      <section className="answer-section alt-section" id="availability">
+        <div className="section-heading"><span>05</span><div><p>Availability</p><h2>See live class times at your preferred pool.</h2></div></div>
+        <p className="section-intro">Availability changes as families enroll and move up. Choose a location to see the most current schedule and open classes.</p>
+        <div className="answers-location-grid">
+          {locations.map((location) => <a href={location.href} target="_blank" rel="noreferrer" key={location.name}><span><strong>{location.name}</strong><small>{location.detail}</small></span><b aria-hidden="true">→</b></a>)}
+        </div>
       </section>
 
       <section className="hold-callout">

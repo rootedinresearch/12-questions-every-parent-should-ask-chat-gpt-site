@@ -572,3 +572,91 @@ button:focus-visible,a:focus-visible { outline:3px solid var(--yellow); outline-
   .handoff-actions button,
   .handoff-actions a { width: 100%; text-align: center; }
 }
+
+/* PDF Request Box Styles */
+.pdf-request-box {
+  margin: 22px auto 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--paper);
+  text-align: center;
+  width: min(680px, 100%);
+  box-shadow: 0 4px 12px rgba(16,39,116,0.04);
+}
+.pdf-request-box h3 {
+  margin: 0 0 8px;
+  color: var(--navy);
+  font-size: 15px;
+  font-weight: 700;
+}
+.pdf-form {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+}
+.pdf-form input {
+  flex: 1;
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid #cfd7e6;
+  border-radius: 12px;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
+  color: var(--ink);
+  transition: border-color 0.2s ease;
+}
+.pdf-form input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(19,46,171,.1);
+}
+.pdf-form button {
+  height: 44px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+  box-shadow: 0 4px 10px rgba(19,46,171,0.2);
+}
+.pdf-form button:hover {
+  background: var(--navy);
+}
+.pdf-form button:active {
+  transform: translateY(1px);
+}
+.pdf-success-box {
+  margin: 22px auto 0;
+  padding: 20px;
+  border-radius: 20px;
+  background: #edfbf2;
+  color: #1e4620;
+  text-align: center;
+  width: min(680px, 100%);
+  border: 1px solid #c2e7cc;
+}
+.pdf-success-box strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.pdf-success-box p {
+  margin: 0;
+  font-size: 12px;
+  color: #3b603d;
+}
+
+@media (max-width: 680px) {
+  .pdf-form {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .pdf-form button {
+    width: 100%;
+  }
+}

@@ -21,18 +21,51 @@ const questions: Question[] = [
   { category: "Family life & flexibility", question: "How many locations are there, and can I switch if life changes?", why: "A new job, school schedule, or move across town can change what works. Nearby options make it easier to stay consistent.", answer: "Our locally owned school offers three convenient pools across Arlington, Mansfield, and Grand Prairie." },
 ];
 
-const locations = [
-  { name: "Arlington", detail: "LA Fitness · Little Road", href: "https://britishswimschool.com/arlington-south-grand-prairie/location/arlington-la-fitness-little-road/" },
-  { name: "Mansfield", detail: "24 Hour Fitness · Walnut Creek", href: "https://britishswimschool.com/arlington-south-grand-prairie/location/mansfield-24-hour-fitness/" },
-  { name: "Grand Prairie", detail: "LA Fitness · I-20", href: "https://britishswimschool.com/arlington-south-grand-prairie/location/grand-prairie-la-fitness/" },
-];
+
 
 const totalSlides = questions.length + 2;
+
+const LEAD_ENDPOINT = "https://script.google.com/macros/s/AKfycbyUCakByl8j40MxtKBkAqR5VT9zUbvE0-WK7Jltd47RN_MO9cIEipEXTWpW5fLQ2wqk3Q/exec";
 
 export default function Home() {
   const [slide, setSlide] = useState(0);
   const [answerRevealed, setAnswerRevealed] = useState(false);
+  const [pdfEmail, setPdfEmail] = useState("");
+  const [pdfSent, setPdfSent] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const touchStart = useRef<number | null>(null);
+
+  const handlePdfSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pdfEmail) return;
+    setPdfLoading(true);
+    const payload = JSON.stringify({
+      submittedAt: new Date().toISOString(),
+      message: `Requested 12 Questions PDF Guide for: ${pdfEmail}`,
+      family: {
+        firstName: "PDF Request",
+        lastName: "",
+        email: pdfEmail,
+        phone: "",
+        smsConsent: false
+      },
+      referral: {
+        source: "12 Questions Site",
+        friendName: "",
+        other: ""
+      },
+      swimmers: []
+    });
+    try {
+      const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
+      navigator.sendBeacon(LEAD_ENDPOINT, blob);
+    } catch {
+      fetch(LEAD_ENDPOINT, { method: "POST", mode: "no-cors", keepalive: true, headers: { "content-type": "text/plain;charset=utf-8" }, body: payload }).catch(() => {});
+    }
+    setPdfSent(true);
+    setPdfLoading(false);
+    window.location.href = `mailto:goswimarlsgpra@britishswimschool.com?subject=12-Questions%20PDF%20Request&body=Please%20send%20a%20PDF%20copy%20of%20the%2012-Questions%20Guide%20to%3A%20${encodeURIComponent(pdfEmail)}`;
+  };
   const isIntro = slide === 0;
   const isFinish = slide === totalSlides - 1;
   const currentQuestion = !isIntro && !isFinish ? questions[slide - 1] : null;
@@ -56,7 +89,7 @@ export default function Home() {
     <main className="site-shell">
       <div className="water-lines" aria-hidden="true" />
       <header className="topbar">
-        <button className="brand" onClick={() => go(0)} aria-label="Return to the beginning"><img src="/bss-logo.jpg" alt="British Swim School — Every Age. Every Stage." /></button>
+        <button className="brand" onClick={() => go(0)} aria-label="Return to the beginning"><img src="/bss-logo.png" alt="British Swim School — Every Age. Every Stage." /></button>
         <div className="counter" aria-live="polite">{isIntro ? "Parent guide" : isFinish ? "Your next step" : `Question ${slide} of 12`}</div>
       </header>
 
@@ -103,11 +136,32 @@ export default function Home() {
           {isFinish && <>
             <div className="finish-mark" aria-hidden="true">✓</div>
             <div className="eyebrow">You know what to ask</div>
-            <h2>Now find the class that fits your family.</h2>
-            <p className="finish-copy">View live class times and availability at your preferred pool. Not sure where to begin? Text or email us—Greg, Melissa, or a member of our local team will help.</p>
-            <div className="location-list">
-              {locations.map((location) => <a href={location.href} target="_blank" rel="noreferrer" className="location-link" key={location.name}><span><strong>{location.name}</strong><small>{location.detail}</small></span><span aria-hidden="true">→</span></a>)}
+            <h2>Select your pricing, location, and class times.</h2>
+            <p className="finish-copy">Compare our plans, view available schedules, or request your parent guide PDF below. You can also text or email us anytime.</p>
+            <div className="location-list select-flow-list">
+              <Link href="/answers" className="location-link">
+                <span><strong>Pricing &amp; Locations</strong><small>View our plans, prices, and indoor pools</small></span>
+                <span aria-hidden="true">→</span>
+              </Link>
+              <Link href="/hold" className="location-link">
+                <span><strong>Find My Class Time</strong><small>Use our starting level estimator</small></span>
+                <span aria-hidden="true">→</span>
+              </Link>
             </div>
+            {pdfSent ? (
+              <div className="pdf-success-box">
+                <strong>✓ Request Sent!</strong>
+                <p>Opening your mail app to request the PDF to: {pdfEmail}</p>
+              </div>
+            ) : (
+              <div className="pdf-request-box">
+                <h3>Want a PDF copy of this guide?</h3>
+                <form onSubmit={handlePdfSubmit} className="pdf-form">
+                  <input type="email" placeholder="Enter your email address" required value={pdfEmail} onChange={(e) => setPdfEmail(e.target.value)} disabled={pdfLoading} />
+                  <button type="submit" disabled={pdfLoading}>{pdfLoading ? "Sending..." : "Email Me the PDF"}</button>
+                </form>
+              </div>
+            )}
             <div className="contact-row">
               <a className="contact-button text-button" href="sms:+18179735455?body=Hi%20British%20Swim%20School!%20I%20just%20reviewed%20the%2012%20questions%20guide%20and%20would%20like%20help%20finding%20the%20right%20class.">Text us</a>
               <a className="contact-button email-button" href="mailto:goswimarlsgpra@britishswimschool.com?subject=Help%20finding%20the%20right%20swim%20class&body=Hi%20British%20Swim%20School%2C%0A%0AI%20reviewed%20the%2012%20questions%20guide%20and%20would%20like%20help%20finding%20the%20right%20class.">Email us</a>

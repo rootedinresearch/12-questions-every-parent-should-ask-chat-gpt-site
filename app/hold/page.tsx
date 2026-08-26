@@ -11,7 +11,7 @@ export default function HoldPage() {
   return (
     <main className="hold-shell">
       <header className="answers-header">
-        <Link href="/" className="answers-brand" aria-label="British Swim School parent guide"><img src="/bss-logo.jpg" alt="British Swim School — Every Age. Every Stage." /></Link>
+        <Link href="/" className="answers-brand" aria-label="British Swim School parent guide"><img src="/bss-logo.png" alt="British Swim School — Every Age. Every Stage." /></Link>
         <a className="header-call" href="tel:+18179735455">817-973-5455</a>
       </header>
       <section className="hold-hero">
