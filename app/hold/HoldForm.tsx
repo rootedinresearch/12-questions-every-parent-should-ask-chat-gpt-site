@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { FormEvent, useState, useEffect } from "react";
+import { FormEvent, useState, useEffect, useMemo } from "react";
 
 /* ------------------------------------------------------------------ *
  * Paste your Apps Script /exec URL here. Leave "" to disable logging
@@ -19,6 +19,115 @@ export const LOCATION_DAYS: Record<string, string[]> = {
   mansfield: ["Tuesday", "Thursday", "Friday", "Sunday"],
   grandPrairie: ["Monday", "Tuesday", "Wednesday", "Saturday"]
 };
+
+interface JackrabbitClass {
+  id: number;
+  name: string;
+  category1: string;
+  category2: string;
+  category3: string;
+  location_code: string;
+  location_name?: string;
+  location?: string;
+  meeting_days: {
+    mon: boolean;
+    tue: boolean;
+    wed: boolean;
+    thu: boolean;
+    fri: boolean;
+    sat: boolean;
+    sun: boolean;
+  };
+  start_time: string;
+  end_time: string;
+  openings: {
+    calculated_openings: number;
+  };
+  online_reg_link: string;
+  waitlist: boolean;
+  room?: string;
+  instructors?: string[];
+}
+
+function matchClassLevel(classObj: JackrabbitClass, swimmerLevel: string): boolean {
+  const cat1 = (classObj.category1 || "").toLowerCase();
+  const name = (classObj.name || "").toLowerCase();
+  const target = swimmerLevel.toLowerCase();
+
+  if (cat1.includes(target) || name.includes(target)) return true;
+
+  if (target === "adult 1" && cat1.includes("adult level 1")) return true;
+  if (target === "adult 2" && cat1.includes("adult level 2")) return true;
+  if (target === "adult 3" && cat1.includes("adult level 3")) return true;
+  if (target === "barracuda" && (cat1.includes("barracuda") || name.includes("barracuda"))) return true;
+
+  return false;
+}
+
+function matchLocation(classLocCode: string, selectedLocs: string[]): boolean {
+  const code = (classLocCode || "").toLowerCase();
+  if (code === "laflitt" || code === "arl") return selectedLocs.includes("arlington");
+  if (code === "lafgp" || code === "gp") return selectedLocs.includes("grandPrairie");
+  if (code === "man24h" || code === "man") return selectedLocs.includes("mansfield");
+  return false;
+}
+
+function matchDays(classObj: JackrabbitClass, preferredDaysString: string): boolean {
+  const pref = preferredDaysString ? preferredDaysString.split(",").map(d => d.trim().toLowerCase()).filter(Boolean) : [];
+  if (pref.length === 0) return true;
+  
+  const m = classObj.meeting_days || {};
+  const daysMap: Record<string, boolean> = {
+    monday: m.mon,
+    tuesday: m.tue,
+    wednesday: m.wed,
+    thursday: m.thu,
+    friday: m.fri,
+    saturday: m.sat,
+    sunday: m.sun
+  };
+  
+  return pref.some(day => daysMap[day]);
+}
+
+function parseTimeToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const [h, m] = timeStr.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+function formatTime12h(time24: string): string {
+  if (!time24) return "";
+  const [hStr, mStr] = time24.split(":");
+  let h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12;
+  if (h === 0) h = 12;
+  const mm = String(m).padStart(2, "0");
+  return `${h}:${mm} ${ampm}`;
+}
+
+function getInstructorName(classObj: JackrabbitClass): string {
+  if (classObj.instructors && classObj.instructors.length > 0) {
+    const inst = classObj.instructors.join(", ");
+    return inst.toLowerCase().includes("staff") ? "Staff" : inst;
+  }
+  if (classObj.room && classObj.room.startsWith("_")) {
+    return classObj.room.substring(1);
+  }
+  return "Staff";
+}
+
+function getPreciseRegisterUrl(cls: JackrabbitClass, level: string, locCode: string): string {
+  const basePreload = "https://app.jackrabbitclass.com/regv2/regga.aspx?id=553758";
+  const finalLoc = locCode === "LAFGP" || locCode === "gp" ? "LAFGP" : (locCode === "LAFLITT" || locCode === "arl" ? "LAFLITT" : "MAN24H");
+  
+  if (cls.id && String(cls.id).length > 4) {
+    return `${basePreload}&preLoadClassID=${cls.id}&loc=${finalLoc}`;
+  }
+  return `${basePreload}&loc=${finalLoc}`;
+}
 
 const AGE_GROUPS = [
   { id: "under3", label: "Under 3", detail: "Parent & Me" },
@@ -224,6 +333,8 @@ function Choice({ value, onChange, label }: { value: Answer; onChange: (value: A
 
 export default function HoldForm() {
   const [step, setStep] = useState(1);
+  const [openings, setOpenings] = useState<JackrabbitClass[]>([]);
+  const [loadingOpenings, setLoadingOpenings] = useState(false);
   const [counts, setCounts] = useState(initialCounts);
   const [swimmers, setSwimmers] = useState<Swimmer[]>([]);
 
@@ -334,6 +445,148 @@ export default function HoldForm() {
     setMessage("");
   }
 
+  interface CoordinatedMatch {
+    type: "same-time" | "back-to-back" | "same-day" | "individual";
+    day: string;
+    timeLabel: string;
+    locationName: string;
+    classes: { swimmerName: string; level: string; classObj: JackrabbitClass }[];
+    score: number;
+  }
+
+  const coordinatedMatches = useMemo<CoordinatedMatch[]>(() => {
+    if (openings.length === 0) return [];
+    
+    const matches: CoordinatedMatch[] = [];
+    const daysOfWeek = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+    const dayLabels: Record<string, string> = {
+      mon: "Monday",
+      tue: "Tuesday",
+      wed: "Wednesday",
+      thu: "Thursday",
+      fri: "Friday",
+      sat: "Saturday",
+      sun: "Sunday"
+    };
+
+    const swimmersWithFilteredClasses = swimmers.map(swimmer => {
+      const swimmerLevel = startingLevel(swimmer);
+      const locationsArray = swimmer.location ? swimmer.location.split(",").filter(Boolean) : [];
+      
+      const matchedClasses = openings.filter(c => {
+        const levelMatch = matchClassLevel(c, swimmerLevel);
+        const locMatch = matchLocation(c.location_code, locationsArray);
+        const dayMatch = matchDays(c, swimmer.preferredSchedule);
+        
+        const name = (c.name || "").toLowerCase();
+        const isStaffShift = name.includes("manager on duty") || name.includes("staff meeting") || name.includes("convenience fee");
+        
+        return levelMatch && locMatch && dayMatch && !isStaffShift;
+      });
+
+      return {
+        swimmer,
+        matchedClasses
+      };
+    });
+
+    if (swimmers.length === 1) {
+      const { swimmer, matchedClasses } = swimmersWithFilteredClasses[0];
+      matchedClasses.forEach(c => {
+        const days = Object.keys(c.meeting_days).filter(k => c.meeting_days[k as keyof typeof c.meeting_days]);
+        days.forEach(d => {
+          matches.push({
+            type: "individual",
+            day: dayLabels[d] || d,
+            timeLabel: formatTime12h(c.start_time),
+            locationName: c.location_name || c.location || "",
+            classes: [{ swimmerName: swimmer.firstName, level: startingLevel(swimmer), classObj: c }],
+            score: 10
+          });
+        });
+      });
+      return matches.slice(0, 15);
+    }
+
+    const locCodes = ["LAFLITT", "LAFGP", "MAN24H"];
+    locCodes.forEach(locCode => {
+      const locName = locCode === "LAFGP" ? "Grand Prairie" : (locCode === "LAFLITT" ? "Arlington" : "Mansfield");
+      
+      daysOfWeek.forEach(dayKey => {
+        const swimmerClassesAtSlot = swimmersWithFilteredClasses.map(s => {
+          return {
+            swimmer: s.swimmer,
+            classes: s.matchedClasses.filter(c => c.location_code === locCode && c.meeting_days[dayKey as keyof typeof c.meeting_days])
+          };
+        });
+
+        if (swimmers.length === 2) {
+          const s1 = swimmerClassesAtSlot[0];
+          const s2 = swimmerClassesAtSlot[1];
+
+          s1.classes.forEach(c1 => {
+            s2.classes.forEach(c2 => {
+              const t1 = parseTimeToMinutes(c1.start_time);
+              const t2 = parseTimeToMinutes(c2.start_time);
+              
+              if (t1 === t2) {
+                matches.push({
+                  type: "same-time",
+                  day: dayLabels[dayKey],
+                  timeLabel: formatTime12h(c1.start_time),
+                  locationName: locName,
+                  classes: [
+                    { swimmerName: s1.swimmer.firstName, level: startingLevel(s1.swimmer), classObj: c1 },
+                    { swimmerName: s2.swimmer.firstName, level: startingLevel(s2.swimmer), classObj: c2 }
+                  ],
+                  score: 100
+                });
+              } else if (Math.abs(t1 - t2) === 30) {
+                matches.push({
+                  type: "back-to-back",
+                  day: dayLabels[dayKey],
+                  timeLabel: `${formatTime12h(c1.start_time)} & ${formatTime12h(c2.start_time)}`,
+                  locationName: locName,
+                  classes: [
+                    { swimmerName: s1.swimmer.firstName, level: startingLevel(s1.swimmer), classObj: c1 },
+                    { swimmerName: s2.swimmer.firstName, level: startingLevel(s2.swimmer), classObj: c2 }
+                  ],
+                  score: 50
+                });
+              }
+            });
+          });
+        } else {
+          const hasOpeningsForAll = swimmerClassesAtSlot.every(s => s.classes.length > 0);
+          if (hasOpeningsForAll) {
+            const combined = swimmerClassesAtSlot.map(s => ({
+              swimmerName: s.swimmer.firstName,
+              level: startingLevel(s.swimmer),
+              classObj: s.classes[0]
+            }));
+            matches.push({
+              type: "same-day",
+              day: dayLabels[dayKey],
+              timeLabel: swimmerClassesAtSlot.map(s => formatTime12h(s.classes[0].start_time)).join(", "),
+              locationName: locName,
+              classes: combined,
+              score: 30
+            });
+          }
+        }
+      });
+    });
+
+    const dayWeight = { "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6, "Sunday": 7 };
+    return matches.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      const dayA = dayWeight[a.day as keyof typeof dayWeight] || 0;
+      const dayB = dayWeight[b.day as keyof typeof dayWeight] || 0;
+      if (dayA !== dayB) return dayA - dayB;
+      return a.timeLabel.localeCompare(b.timeLabel);
+    }).slice(0, 15);
+  }, [swimmers, openings]);
+
   function goToLevels() {
     setShowValidationErrors(true);
     
@@ -378,6 +631,18 @@ export default function HoldForm() {
     setMessage("");
     setStep(4);
     window.scrollTo({ top: 0, behavior: "smooth" });
+    
+    setLoadingOpenings(true);
+    fetch("/api/openings")
+      .then((res) => res.json())
+      .then((data) => {
+        const classes = Array.isArray(data) ? data : (data.classes || []);
+        setOpenings(classes);
+        setLoadingOpenings(false);
+      })
+      .catch(() => {
+        setLoadingOpenings(false);
+      });
   }
 
   function buildMessage() {
@@ -561,6 +826,48 @@ export default function HoldForm() {
       <div className="review-family"><strong>{family.firstName} {family.lastName}</strong><span>{family.email} · {family.phone}</span></div>
       <div className="review-swimmers">{swimmers.map((swimmer) => <article key={swimmer.id}><header><div><strong>{swimmer.firstName}</strong><small>{swimmer.dob} · {swimmer.gender}</small></div><b>{startingLevel(swimmer)}</b></header><p>{swimmer.location ? swimmer.location.split(",").map(id => LOCATIONS.find(l => l.id === id)?.name).filter(Boolean).join(", ") : "No location selected"}{swimmer.preferredSchedule ? ` · ${swimmer.preferredSchedule}` : ""}</p></article>)}</div>
       <div className="review-referral"><span>How you heard about us</span><strong>{referral.source}{referral.friendName ? ` · Referred by ${referral.friendName}` : referral.other ? ` · ${referral.other}` : ""}</strong></div>
+
+      <div className="coordinated-section">
+        <h3>Class Openings Found</h3>
+        {loadingOpenings ? (
+          <p style={{ fontSize: '13px', color: 'var(--muted)' }}>Searching live pool schedules...</p>
+        ) : coordinatedMatches.length === 0 ? (
+          <p style={{ fontSize: '13px', color: 'var(--muted)' }}>No direct openings found for the selected criteria. Our team will manually check other options and text you.</p>
+        ) : (
+          <div className="matches-list">
+            {coordinatedMatches.slice(0, 6).map((match, idx) => (
+              <article className="match-card" key={idx}>
+                <div className="match-header">
+                  <div>
+                    <span className="match-title">{match.day}s at {match.timeLabel}</span>
+                    <div className="match-location">{match.locationName}</div>
+                  </div>
+                  {match.type === "same-time" && <span className="match-badge badge-same-time">Same Time</span>}
+                  {match.type === "back-to-back" && <span className="match-badge badge-back-to-back">Back-to-Back</span>}
+                  {match.type === "same-day" && <span className="match-badge badge-same-day">Same Day</span>}
+                </div>
+                <div className="match-classes">
+                  {match.classes.map((cls, cIdx) => (
+                    <div className="match-class-item" key={cIdx}>
+                      <span className="class-info-line">
+                        <strong>{cls.swimmerName}</strong>: {cls.level} with Coach {getInstructorName(cls.classObj)}
+                      </span>
+                      <a
+                        className="register-btn"
+                        href={getPreciseRegisterUrl(cls.classObj, cls.level, cls.classObj.location_code)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Book Class ↗
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="assessment-disclaimer"><strong>Placement note</strong><p>These levels are estimates based on your answers. Every swimmer receives an assessment during the first lesson. If another level is a better fit, we will make the adjustment.</p></div>
       <label className="honeypot" aria-hidden="true">Company<input name="company" tabIndex={-1} autoComplete="off" /></label>
       {message && <p className="form-error" role="alert">{message}</p>}
