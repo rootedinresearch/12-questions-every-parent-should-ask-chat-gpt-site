@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { FormEvent, useMemo, useState, useEffect } from "react";
+import { FormEvent, useState, useEffect } from "react";
 
 /* ------------------------------------------------------------------ *
  * Paste your Apps Script /exec URL here. Leave "" to disable logging
@@ -220,12 +220,20 @@ export default function HoldForm() {
     const patch: Partial<Swimmer> = { dob: formatted };
 
     if (detectedGroup && detectedGroup !== swimmer.ageGroup) {
+      const oldGroup = swimmer.ageGroup;
       patch.ageGroup = detectedGroup;
-      const oldGroupLabel = AGE_GROUPS.find((g) => g.id === swimmer.ageGroup)?.label || swimmer.ageGroup;
+      
       const newGroupLabel = AGE_GROUPS.find((g) => g.id === detectedGroup)?.label || detectedGroup;
-      patch.dobMessage = `Note: DOB auto-aligned ${swimmer.firstName || "swimmer"} from ${oldGroupLabel} to ${newGroupLabel}.`;
+      patch.dobMessage = `Based on ${swimmer.firstName || "swimmer"}'s birth date, we changed their swim group to ${newGroupLabel} so they see the correct lessons.`;
       patch.selectedLevel = "";
       patch.placementMode = "";
+
+      // Sync the age group counter at the top of the page
+      setCounts((prev) => ({
+        ...prev,
+        [oldGroup]: Math.max(0, prev[oldGroup] - 1),
+        [detectedGroup]: prev[detectedGroup] + 1
+      }));
     } else {
       patch.dobMessage = "";
     }
@@ -265,7 +273,7 @@ export default function HoldForm() {
     };
   }, [step]);
 
-  const profileValid = useMemo(() => swimmers.length > 0 && swimmers.every((swimmer) => swimmer.firstName.trim() && validDob(swimmer.dob) && swimmer.gender) && family.firstName.trim() && family.lastName.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(family.email) && family.phone.replace(/\D/g, "").length >= 10 && family.smsConsent, [swimmers, family]);
+  
   const classValid = swimmers.length > 0 && swimmers.every((swimmer) => swimmer.location) && referral.source && (referral.source !== "Friend or referral" || referral.friendName.trim());
 
   function changeCount(group: AgeGroup, change: number) {
@@ -312,10 +320,33 @@ export default function HoldForm() {
 
   function goToLevels() {
     setShowValidationErrors(true);
-    if (!profileValid) return setMessage("Please complete the family and swimmer information, including a valid MM/DD/YYYY date of birth.");
+    
+    const errors = [];
+    if (!family.firstName.trim()) errors.push("Parent First Name");
+    if (!family.lastName.trim()) errors.push("Parent Last Name");
+    if (!/\S+@\S+\.\S+/.test(family.email)) errors.push("Parent Email");
+    if (family.phone.replace(/\D/g, "").length < 10) errors.push("Parent Mobile Phone (10 digits)");
+    if (!family.smsConsent) errors.push("SMS Text Consent");
+
+    swimmers.forEach((swimmer, index) => {
+      const name = swimmer.firstName.trim() || `Swimmer ${index + 1}`;
+      if (!swimmer.firstName.trim()) errors.push(`${name}'s First Name`);
+      if (!swimmer.dob) {
+        errors.push(`${name}'s Date of Birth`);
+      } else if (!validDob(swimmer.dob)) {
+        errors.push(`${name}'s Date of Birth (must be valid MM/DD/YYYY)`);
+      }
+      if (!swimmer.gender) errors.push(`${name}'s Gender`);
+    });
+
+    if (errors.length > 0) {
+      return setMessage("Please correct the following fields: " + errors.join(", ") + ".");
+    }
+
     setMessage("");
     setActiveSwimmer(0);
     setStep(2);
+    logLead("Step 1 Completed: Swimmer Profiles & Contact Info");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
