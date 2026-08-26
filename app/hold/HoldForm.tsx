@@ -853,7 +853,7 @@ export default function HoldForm() {
   }
 
   return (
-    <div className="hold-form-wrapper">
+    <div className="hold-form">
       <div className="wizard-progress" aria-label={"Step " + step + " of 5"}>
         {["Instant Quote", "Profiles & Contact", "Placement Levels", "Pools & Days", "Review"].map((label, index) => (
           <span key={label} className={step === index + 1 ? "current" : step > index + 1 ? "complete" : ""}>
