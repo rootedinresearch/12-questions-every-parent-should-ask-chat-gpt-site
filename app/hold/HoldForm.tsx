@@ -940,43 +940,43 @@ export default function HoldForm() {
                           <>
                             <button
                               type="button"
-                              onClick={() => updateSwimmer(swimmer.id, { pace: "dolphin_semi" })}
-                              className={"pace-btn " + (swimmer.pace === "dolphin_semi" ? "selected" : "")}
-                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "dolphin_semi" ? 'var(--navy)' : '#fff', color: swimmer.pace === "dolphin_semi" ? '#fff' : 'var(--navy)' }}
-                            >
-                              Semi-Private
-                            </button>
-                            <button
-                              type="button"
                               onClick={() => updateSwimmer(swimmer.id, { pace: "dolphin_private" })}
                               className={"pace-btn " + (swimmer.pace === "dolphin_private" ? "selected" : "")}
                               style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "dolphin_private" ? 'var(--navy)' : '#fff', color: swimmer.pace === "dolphin_private" ? '#fff' : 'var(--navy)' }}
                             >
                               Private
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSwimmer(swimmer.id, { pace: "dolphin_semi" })}
+                              className={"pace-btn " + (swimmer.pace === "dolphin_semi" ? "selected" : "")}
+                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "dolphin_semi" ? 'var(--navy)' : '#fff', color: swimmer.pace === "dolphin_semi" ? '#fff' : 'var(--navy)' }}
+                            >
+                              Semi-Private
+                            </button>
                           </>
                         ) : (
                           <>
                             <button
                               type="button"
-                              onClick={() => updateSwimmer(swimmer.id, { pace: "foundation" })}
-                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "foundation" ? 'var(--navy)' : '#fff', color: swimmer.pace === "foundation" ? '#fff' : 'var(--navy)' }}
+                              onClick={() => updateSwimmer(swimmer.id, { pace: "unlimited" })}
+                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "unlimited" ? 'var(--navy)' : '#fff', color: swimmer.pace === "unlimited" ? '#fff' : 'var(--navy)' }}
                             >
-                              1X Foundation
+                              Elite
                             </button>
                             <button
                               type="button"
                               onClick={() => updateSwimmer(swimmer.id, { pace: "standard" })}
                               style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "standard" ? 'var(--navy)' : '#fff', color: swimmer.pace === "standard" ? '#fff' : 'var(--navy)' }}
                             >
-                              2X Standard
+                              Standard
                             </button>
                             <button
                               type="button"
-                              onClick={() => updateSwimmer(swimmer.id, { pace: "unlimited" })}
-                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "unlimited" ? 'var(--navy)' : '#fff', color: swimmer.pace === "unlimited" ? '#fff' : 'var(--navy)' }}
+                              onClick={() => updateSwimmer(swimmer.id, { pace: "foundation" })}
+                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "foundation" ? 'var(--navy)' : '#fff', color: swimmer.pace === "foundation" ? '#fff' : 'var(--navy)' }}
                             >
-                              Unlimited
+                              Foundation
                             </button>
                           </>
                         )}
@@ -1079,7 +1079,7 @@ export default function HoldForm() {
               <strong style={{ fontSize: '32px', fontWeight: '900', color: '#c8102e', display: 'block', lineHeight: '1' }}>${quotePricing.firstMonthTotal.toFixed(2)}</strong>
             </div>
 
-            <div style={{ fontSize: '11px', lineHeight: '1.5', color: 'var(--ink)', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #eef2ff', marginBottom: '24px' }}>
+            <div className="tuition-description-block" style={{ fontSize: '11px', lineHeight: '1.5', color: 'var(--ink)', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #eef2ff', marginBottom: '24px' }}>
               Your first payment on the day you enroll is <strong>${quotePricing.firstMonthTotal.toFixed(2)}</strong>. This includes your first month&apos;s tuition of <strong>${quotePricing.totalTuition.toFixed(2)}</strong> plus a one-time annual enrollment fee of <strong>${quotePricing.totalRegistrationFees.toFixed(2)}</strong>.
               <br/><br/>
               Your ongoing monthly tuition will be <strong>${quotePricing.totalTuition.toFixed(2)}</strong> starting in your second month.
@@ -1302,17 +1302,9 @@ export default function HoldForm() {
               const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
               const availableDays = dayOrder.filter((day) => availableDaysSet.has(day));
 
-              const toggleLocation = (locId: string) => {
-                let nextArr;
-                if (locationsArray.includes(locId)) {
-                  nextArr = locationsArray.filter((id) => id !== locId);
-                } else {
-                  nextArr = [...locationsArray, locId];
-                }
-                updateSwimmer(swimmer.id, { location: nextArr.join(","), preferredSchedule: "" });
-              };
 
-              const selectedNames = locationsArray.map(id => LOCATIONS.find(l => l.id === id)?.name).filter(Boolean).join(", ");
+
+              const selectedNames = swimmer.location ? LOCATIONS.find(l => l.id === swimmer.location)?.name || "" : "";
               const preferredArray = swimmer.preferredSchedule ? swimmer.preferredSchedule.split(",").map(d => d.trim()).filter(Boolean) : [];
 
               return (
@@ -1321,12 +1313,11 @@ export default function HoldForm() {
                   
                   <div className="pool-choices">
                     {LOCATIONS.map((location) => {
-                      const isSelected = locationsArray.includes(location.id);
+                      const isSelected = swimmer.location === location.id;
                       return (
-                        <label key={location.id} className={isSelected ? "selected" : ""}>
-                          <input type="checkbox" checked={isSelected} onChange={() => toggleLocation(location.id)} />
-                          <strong>{location.name}</strong>
-                          <small>{location.detail}</small>
+                        <label key={location.id} className={isSelected ? "selected" : ""} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '16px', border: '1px solid #dce3ef', borderRadius: '12px', marginBottom: '10px', cursor: 'pointer' }}>
+                          <input type="radio" name={"location_" + swimmer.id} checked={isSelected} onChange={() => updateSwimmer(swimmer.id, { location: location.id, preferredSchedule: "" })} style={{ width: '18px', height: '18px' }} />
+                          <strong style={{ fontSize: '15px', color: 'var(--navy)' }}>{location.name} - {location.detail}</strong>
                         </label>
                       );
                     })}

@@ -835,3 +835,9 @@ button:focus-visible,a:focus-visible { outline:3px solid var(--yellow); outline-
     position: static !important;
   }
 }
+
+@media (max-width: 768px) {
+  .tuition-description-block {
+    display: none !important;
+  }
+}
