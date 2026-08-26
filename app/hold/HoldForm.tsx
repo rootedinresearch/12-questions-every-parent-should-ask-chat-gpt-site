@@ -8,7 +8,7 @@ import { FormEvent, useMemo, useState } from "react";
  * Paste your Apps Script /exec URL here. Leave "" to disable logging
  * entirely — the SMS handoff still works without it.
  * ------------------------------------------------------------------ */
-const LEAD_ENDPOINT = "";
+const LEAD_ENDPOINT = "https://script.google.com/macros/s/AKfycbyUCakByl8j40MxtKBkAqR5VT9zUbvE0-WK7Jltd47RN_MO9cIEipEXTWpW5fLQ2wqk3Q/exec";
 
 const SCHOOL_SMS = "+18179735455";
 const SCHOOL_EMAIL = "goswimarlsgpra@britishswimschool.com";
