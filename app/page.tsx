@@ -64,31 +64,8 @@ export default function Home() {
     }
     setPdfSent(true);
     setPdfLoading(false);
-    const emailBody = `Hi British Swim School Team,
-
-I would like to request a PDF copy of the 12 Questions Parent Guide.
-
-Customer Email: ${pdfEmail}
-
-==================================================
-[FOR OFFICE STAFF ACTION]
-1. Click Reply (sends to the customer's email above).
-2. Attach the "12-Questions Parent Guide" PDF.
-3. Copy and paste the template response below.
-4. Text the family at their number if logged in the sheet.
-
-[COPY/PASTE TEMPLATE RESPONSE TO CUSTOMER]
---------------------------------------------------
-Hi!
-
-Thank you for requesting our 12 Questions Swim Lesson Guide. We have attached the PDF version to this email.
-
-If you have any questions about starting levels, pool schedules, or pricing for Arlington, Mansfield, or Grand Prairie, please let us know or text us at 817-973-5455.
-
-Best regards,
-Greg, Melissa & the British Swim School Team
---------------------------------------------------`;
-    window.location.href = `mailto:goswimarlsgpra@britishswimschool.com?subject=12-Questions%20PDF%20Request&body=${encodeURIComponent(emailBody)}`;
+    
+    // Logging to Sheet is enough, no mail client redirect needed
   };
   const isIntro = slide === 0;
   const isFinish = slide === totalSlides - 1;
@@ -186,10 +163,7 @@ Greg, Melissa & the British Swim School Team
                 </form>
               </div>
             )}
-            <div className="contact-row">
-              <a className="contact-button text-button" href="sms:+18179735455?body=Hi%20British%20Swim%20School!%20I%20just%20reviewed%20the%2012%20questions%20guide%20and%20would%20like%20help%20finding%20the%20right%20class.">Text us</a>
-              <a className="contact-button email-button" href="mailto:goswimarlsgpra@britishswimschool.com?subject=Help%20finding%20the%20right%20swim%20class&body=Hi%20British%20Swim%20School%2C%0A%0AI%20reviewed%20the%2012%20questions%20guide%20and%20would%20like%20help%20finding%20the%20right%20class.">Email us</a>
-            </div>
+
             <p className="no-pressure">2-Class Money-Back Trial · No long-term contracts · No pressure</p>
           </>}
           </article>

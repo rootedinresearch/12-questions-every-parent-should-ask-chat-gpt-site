@@ -37,7 +37,7 @@ export default function AnswersPage() {
       </section>
 
       <section className="answer-section" id="pricing">
-        <div className="section-heading"><span>01</span><div><p>Pricing</p><h2>Choose the pace that fits your goals.</h2></div></div>
+        <div className="section-heading"><span>01</span><div><p>Pricing</p><h2>Flat, Predictable Monthly Subscription</h2></div></div>
         <p className="section-intro">Pricing is a flat monthly subscription based on the Pace. We never charge for months with a 5th lesson. For most families, <strong>STANDARD—two lessons each week—is the best balance of progress, consistency, and value.</strong></p>
         
         <div className="pricing-grid">
@@ -76,16 +76,47 @@ export default function AnswersPage() {
 
       <section className="answer-section alt-section" id="flexibility">
         <div className="section-heading"><span>02</span><div><p>Flexibility</p><h2>Built for real family schedules.</h2></div></div>
-        <ul className="check-list" style={{ maxWidth: '680px', margin: '25px auto 0' }}>
-          <li>Month-to-month enrollment with no long-term contract</li>
-          <li>30-day notice to pause or cancel</li>
-          <li>Change your lesson pace with notice</li>
-          <li>Makeup credits do not expire while your account remains active</li>
-        </ul>
+        <div style={{ maxWidth: '680px', margin: '25px auto 0' }}>
+          <p className="section-intro" style={{ textAlign: 'left', margin: '0 0 20px' }}>
+            All local swim schools will be about the same price. What really sets us apart is that we’ve built a family-first program designed for real schedules:
+          </p>
+          <ul className="check-list" style={{ listStyle: 'none', padding: 0 }}>
+            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
+              <span style={{ position: 'absolute', left: 0 }}>✅</span> Flat, predictable monthly tuition
+            </li>
+            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
+              <span style={{ position: 'absolute', left: 0 }}>✅</span> No sessions — lessons continue year-round in indoor, heated pools, so you never lose your spot
+            </li>
+            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
+              <span style={{ position: 'absolute', left: 0 }}>✅</span> One weekly class time with the same instructor (for example, Wednesday at 6pm every week)
+            </li>
+            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
+              <span style={{ position: 'absolute', left: 0 }}>✅</span> Swim at any of our three locations — Mansfield, Grand Prairie, or Arlington
+            </li>
+            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
+              <span style={{ position: 'absolute', left: 0 }}>✅</span> Flexible absence policy with makeups that never expire
+            </li>
+            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
+              <span style={{ position: 'absolute', left: 0 }}>✅</span> No extra charges when a month has a 5th lesson
+            </li>
+            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
+              <span style={{ position: 'absolute', left: 0 }}>✅</span> Pause Program if life gets busy — pause lessons, keep unused makeups, and return to the top of the waitlist
+            </li>
+            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
+              <span style={{ position: 'absolute', left: 0 }}>✅</span> 2-class money-back trial — enroll, take two lessons, and if it’s not the right fit, receive a full refund
+            </li>
+            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
+              <span style={{ position: 'absolute', left: 0 }}>✅</span> Easy pause or withdrawal through the app with 30-day notice after the trial
+            </li>
+          </ul>
+          <p style={{ marginTop: '24px', fontSize: '13px', lineHeight: '1.6', color: 'var(--muted)', fontStyle: 'italic', background: '#eef2ff', padding: '16px', borderRadius: '12px' }}>
+            We are a local family with four kids in Mansfield ISD, and you’ll often see us on deck. It’s the same program we put our own kids in, which is exactly how we designed it.
+          </p>
+        </div>
       </section>
 
       <section className="trial-section" id="trial">
-        <div className="trial-badge">3</div>
+        <div className="trial-badge">2-Class<br/>Trial</div>
         <div><p className="answers-kicker">Two-class money-back trial</p><h2>Give your swimmer time to settle in.</h2><p>The trial is secured through regular enrollment, so full monthly tuition and the enrollment fee are charged when you enroll. Attend the first two consecutive classes. If we are not the right fit after class two, we will refund all tuition paid and the enrollment fee. No questions asked.</p></div>
       </section>
 
@@ -99,7 +130,7 @@ export default function AnswersPage() {
             <span><strong>Teens & adults</strong> Beginner through advanced instruction</span>
             <span><strong>DOLPHIN</strong> Adaptive aquatics with individualized support</span>
           </div>
-          <p className="assessment-note" style={{ marginTop: '18px' }}>Your first lesson includes an assessment. If the starting level is not right, we adjust placement.</p>
+          <p className="assessment-note" style={{ marginTop: '18px' }}>Your first lesson always includes an assessment. If the starting level is not right, we adjust placement.</p>
         </div>
       </section>
 

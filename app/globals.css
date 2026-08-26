@@ -718,3 +718,36 @@ button:focus-visible,a:focus-visible { outline:3px solid var(--yellow); outline-
   text-align: center;
   letter-spacing: -0.02em;
 }
+
+/* Custom DOB input overrides */
+.dob-input input {
+  padding-right: 12px !important;
+}
+
+/* responsive font scaling for form inputs */
+@media (max-width: 680px) {
+  .form-grid input, .form-grid select {
+    font-size: 13px !important;
+  }
+}
+@media (max-width: 480px) {
+  .form-grid input, .form-grid select {
+    font-size: 11px !important;
+    padding: 0 8px !important;
+  }
+}
+
+/* Adjust trial-badge to support "2-Class Trial" text */
+.trial-badge {
+  width: 82px !important;
+  height: 82px !important;
+  font-size: 11px !important;
+  line-height: 1.2 !important;
+  text-align: center;
+  padding: 0 4px;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  border-width: 3px !important;
+  text-transform: uppercase;
+}
