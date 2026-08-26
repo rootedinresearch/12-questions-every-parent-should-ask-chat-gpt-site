@@ -14,8 +14,8 @@ const locations = [
 
 const pricing = [
   { group: "Under 3", starting: "$114.99", rows: [["ELITE · Unlimited Swim*", "$399.99"], ["STANDARD · 2 days/week", "$199.99"], ["FOUNDATION · 1 day/week", "$114.99"]], note: "SEAHORSE is priced separately." },
-  { group: "Ages 3–12", starting: "$139.99", rows: [["ELITE · Unlimited Swim*", "$449.99"], ["STANDARD · 2 days/week", "$249.99"], ["FOUNDATION · 1 day/week", "$139.99"]] },
-  { group: "Adult & Young Adult", starting: "$159.99", rows: [["ELITE · Unlimited Swim*", "$499.99"], ["STANDARD · 2 days/week", "$299.99"], ["FOUNDATION · 1 day/week", "$159.99"]] },
+  { group: "Ages 3–18", starting: "$139.99", rows: [["ELITE · Unlimited Swim*", "$449.99"], ["STANDARD · 2 days/week", "$249.99"], ["FOUNDATION · 1 day/week", "$139.99"]] },
+  { group: "Adults (18+)", starting: "$159.99", rows: [["ELITE · Unlimited Swim*", "$499.99"], ["STANDARD · 2 days/week", "$299.99"], ["FOUNDATION · 1 day/week", "$159.99"]] },
   { group: "DOLPHIN · Adaptive", starting: "$249.99", rows: [["Semi-private · 2:1 ratio", "$249.99"], ["Private · 1:1 lesson", "$499.99"]] },
 ];
 
@@ -28,7 +28,7 @@ export default function AnswersPage() {
       </header>
 
       <section className="answers-hero">
-        <p className="answers-kicker">Quick answers for your family</p>
+        <p className="answers-kicker">All About British Swim School of Arlington, Grand Prairie, and Mansfield</p>
         <h1>Still thinking about swim lessons?</h1>
         <p>Here are the answers families ask us for most—pricing, available class times, flexibility, starting level, and how our two-class trial works.</p>
         <nav className="topic-nav" aria-label="Jump to a topic">
@@ -38,12 +38,8 @@ export default function AnswersPage() {
 
       <section className="answer-section" id="pricing">
         <div className="section-heading"><span>01</span><div><p>Pricing</p><h2>Choose the pace that fits your goals.</h2></div></div>
-        <p className="section-intro">Your monthly tuition is based on age, program, and how often your swimmer attends. More time in the water builds confidence and skills faster. For most families, <strong>STANDARD—two lessons each week—is the best balance of progress, consistency, and value.</strong></p>
-        <div className="pace-guide" aria-label="Compare our three lesson paces">
-          <article className="pace-option elite-pace"><span>Maximum momentum</span><h3>ELITE</h3><strong>Unlimited Swim*</strong><p>Our highest-frequency option for families who want the most possible pool time.</p></article>
-          <article className="pace-option standard-pace"><span>Recommended · Most popular</span><h3>STANDARD</h3><strong>2 lessons each week</strong><p>More repetition between lessons helps skills stick and keeps progress moving.</p></article>
-          <article className="pace-option foundation-pace"><span>Steady start</span><h3>FOUNDATION</h3><strong>1 lesson each week</strong><p>A consistent weekly option for families who need a lighter schedule.</p></article>
-        </div>
+        <p className="section-intro">Pricing is a flat monthly subscription based on the Pace. We never charge for months with a 5th lesson. For most families, <strong>STANDARD—two lessons each week—is the best balance of progress, consistency, and value.</strong></p>
+        
         <div className="pricing-grid">
           {pricing.map((plan) => (
             <article className="pricing-card" key={plan.group}>
@@ -59,10 +55,22 @@ export default function AnswersPage() {
             </article>
           ))}
         </div>
+        
         <div className="pricing-notes">
           <div><strong>Enrollment fee</strong><span>$49.99 per swimmer · $59.99 family maximum</span></div>
           <div><strong>Sibling savings</strong><span>10% off monthly tuition for each additional child</span></div>
           <div><strong>Prepay savings</strong><span>Save 15% when you prepay six months of tuition</span></div>
+        </div>
+
+        <div className="pricing-actions">
+          <Link className="pricing-quote-button" href="/hold">Get an Instant Quote &amp; Level Estimate →</Link>
+        </div>
+
+        <h3 className="pace-section-title">Lesson Frequency Options (Pace)</h3>
+        <div className="pace-guide" aria-label="Compare our three lesson paces">
+          <article className="pace-option elite-pace"><span>Maximum momentum</span><h3>ELITE</h3><strong>Unlimited Swim*</strong><p>Our highest-frequency option for families who want the most possible pool time.</p></article>
+          <article className="pace-option standard-pace"><span>Recommended · Most popular</span><h3>STANDARD</h3><strong>2 lessons each week</strong><p>More repetition between lessons helps skills stick and keeps progress moving.</p></article>
+          <article className="pace-option foundation-pace"><span>Steady start</span><h3>FOUNDATION</h3><strong>1 lesson each week</strong><p>A consistent weekly option for families who need a lighter schedule.</p></article>
         </div>
       </section>
 

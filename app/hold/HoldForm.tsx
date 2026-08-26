@@ -60,6 +60,55 @@ function formatDob(value: string) {
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
 
+function smartFormatDob(value: string) {
+  const clean = value.trim();
+  if (!clean) return "";
+
+  // Age input (e.g. 5, 12, 3)
+  if (/^\d{1,2}$/.test(clean)) {
+    const age = parseInt(clean, 10);
+    const birthYear = new Date().getFullYear() - age;
+    return `01/01/${birthYear}`;
+  }
+
+  // 4-digit birth year (e.g. 2018)
+  if (/^\d{4}$/.test(clean)) {
+    return `01/01/${clean}`;
+  }
+
+  // Parse dates with any separator
+  const parts = clean.split(/[\/\-\.\s]+/);
+  if (parts.length === 3) {
+    let [mStr, dStr, yStr] = parts;
+    // YYYY-MM-DD format
+    if (mStr.length === 4) {
+      [yStr, mStr, dStr] = [mStr, dStr, yStr];
+    }
+    const month = parseInt(mStr, 10);
+    const day = parseInt(dStr, 10);
+    let year = parseInt(yStr, 10);
+
+    if (isNaN(month) || isNaN(day) || isNaN(year)) return value;
+
+    // Expand 2-digit years
+    if (year < 100) {
+      const currentYear = new Date().getFullYear();
+      const currentCentury = Math.floor(currentYear / 100) * 100;
+      year += currentCentury;
+      if (year > currentYear) {
+        year -= 100;
+      }
+    }
+
+    const mm = String(month).padStart(2, "0");
+    const dd = String(day).padStart(2, "0");
+    const yyyy = String(year);
+    return `${mm}/${dd}/${yyyy}`;
+  }
+
+  return value;
+}
+
 function validDob(value: string) {
   const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
   if (!match) return false;
@@ -142,6 +191,7 @@ export default function HoldForm() {
   const [onMobile, setOnMobile] = useState(true);
   const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState("");
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
   const current = swimmers[activeSwimmer];
 
   const profileValid = useMemo(() => swimmers.length > 0 && swimmers.every((swimmer) => swimmer.firstName.trim() && validDob(swimmer.dob) && swimmer.gender) && family.firstName.trim() && family.lastName.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(family.email) && family.phone.replace(/\D/g, "").length >= 10 && family.smsConsent, [swimmers, family]);
@@ -190,6 +240,7 @@ export default function HoldForm() {
   }
 
   function goToLevels() {
+    setShowValidationErrors(true);
     if (!profileValid) return setMessage("Please complete the family and swimmer information, including a valid MM/DD/YYYY date of birth.");
     setMessage("");
     setActiveSwimmer(0);
@@ -321,23 +372,23 @@ export default function HoldForm() {
       {swimmers.length > 0 && <>
         <div className="form-section-heading swimmer-heading"><span>2</span><div><p>Parent or guardian</p><h2>Who should we contact?</h2></div></div>
         <div className="form-grid two-column">
-          <label>First name<input value={family.firstName} onChange={(event) => setFamily({ ...family, firstName: event.target.value })} autoComplete="given-name" required /></label>
-          <label>Last name<input value={family.lastName} onChange={(event) => setFamily({ ...family, lastName: event.target.value })} autoComplete="family-name" required /></label>
-          <label>Email address<input value={family.email} onChange={(event) => setFamily({ ...family, email: event.target.value })} type="email" autoComplete="email" required /></label>
-          <label>Mobile phone<input value={family.phone} onChange={(event) => setFamily({ ...family, phone: event.target.value })} type="tel" autoComplete="tel" inputMode="tel" required /></label>
+          <label>First name<input className={showValidationErrors && !family.firstName.trim() ? "invalid-field" : ""} value={family.firstName} onChange={(event) => setFamily({ ...family, firstName: event.target.value })} autoComplete="given-name" required /></label>
+          <label>Last name<input className={showValidationErrors && !family.lastName.trim() ? "invalid-field" : ""} value={family.lastName} onChange={(event) => setFamily({ ...family, lastName: event.target.value })} autoComplete="family-name" required /></label>
+          <label>Email address<input className={showValidationErrors && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(family.email) ? "invalid-field" : ""} value={family.email} onChange={(event) => setFamily({ ...family, email: event.target.value })} type="email" autoComplete="email" required /></label>
+          <label>Mobile phone<input className={showValidationErrors && family.phone.replace(/\D/g, "").length < 10 ? "invalid-field" : ""} value={family.phone} onChange={(event) => setFamily({ ...family, phone: event.target.value })} type="tel" autoComplete="tel" inputMode="tel" required /></label>
         </div>
         <div className="form-section-heading swimmer-heading"><span>3</span><div><p>Swimmer profiles</p><h2>Tell us who will be swimming.</h2></div></div>
         <div className="swimmer-profile-list">
           {swimmers.map((swimmer, index) => <article key={swimmer.id}>
             <header><span>{index + 1}</span><div><strong>Swimmer {index + 1}</strong><small>{AGE_GROUPS.find((group) => group.id === swimmer.ageGroup)?.label}</small></div></header>
             <div className="form-grid three-column">
-              <label>First name<input value={swimmer.firstName} onChange={(event) => updateSwimmer(swimmer.id, { firstName: event.target.value })} required /></label>
-              <label>Date of birth<span className="dob-input"><input value={swimmer.dob} onChange={(event) => updateSwimmer(swimmer.id, { dob: formatDob(event.target.value) })} inputMode="numeric" autoComplete="bday" placeholder="MM/DD/YYYY" maxLength={10} required /><small>MM/DD/YYYY</small></span></label>
-              <label>Gender<select value={swimmer.gender} onChange={(event) => updateSwimmer(swimmer.id, { gender: event.target.value })} required><option value="" disabled>Select one</option><option>Female</option><option>Male</option><option>Nonbinary</option><option>Prefer not to say</option></select></label>
+              <label>First name<input className={showValidationErrors && !swimmer.firstName.trim() ? "invalid-field" : ""} value={swimmer.firstName} onChange={(event) => updateSwimmer(swimmer.id, { firstName: event.target.value })} required /></label>
+              <label>Date of birth<span className="dob-input"><input className={((showValidationErrors && !swimmer.dob) || (swimmer.dob && !validDob(swimmer.dob))) ? "invalid-field" : ""} value={swimmer.dob} onChange={(event) => updateSwimmer(swimmer.id, { dob: formatDob(event.target.value) })} onBlur={(event) => updateSwimmer(swimmer.id, { dob: smartFormatDob(event.target.value) })} inputMode="numeric" autoComplete="bday" placeholder="MM/DD/YYYY" maxLength={10} required /><small>MM/DD/YYYY</small></span></label>
+              <label>Gender<select className={showValidationErrors && !swimmer.gender ? "invalid-field" : ""} value={swimmer.gender} onChange={(event) => updateSwimmer(swimmer.id, { gender: event.target.value })} required><option value="" disabled>Select one</option><option>Female</option><option>Male</option><option>Nonbinary</option><option>Prefer not to say</option></select></label>
             </div>
           </article>)}
         </div>
-        <label className="sms-consent"><input checked={family.smsConsent} onChange={(event) => setFamily({ ...family, smsConsent: event.target.checked })} type="checkbox" required /><span>I agree to receive text messages from British Swim School about level placement and available class times. Message and data rates may apply. Reply STOP to opt out.</span></label>
+        <label className="sms-consent"><input className={showValidationErrors && !family.smsConsent ? "invalid-field" : ""} checked={family.smsConsent} onChange={(event) => setFamily({ ...family, smsConsent: event.target.checked })} type="checkbox" required /><span>I agree to receive text messages from British Swim School about level placement and available class times. Message and data rates may apply. Reply STOP to opt out.</span></label>
         {message && <p className="form-error" role="alert">{message}</p>}
         <button type="button" className="wizard-next" onClick={goToLevels}>Choose starting levels →</button>
       </>}

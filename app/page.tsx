@@ -64,7 +64,31 @@ export default function Home() {
     }
     setPdfSent(true);
     setPdfLoading(false);
-    window.location.href = `mailto:goswimarlsgpra@britishswimschool.com?subject=12-Questions%20PDF%20Request&body=Please%20send%20a%20PDF%20copy%20of%20the%2012-Questions%20Guide%20to%3A%20${encodeURIComponent(pdfEmail)}`;
+    const emailBody = `Hi British Swim School Team,
+
+I would like to request a PDF copy of the 12 Questions Parent Guide.
+
+Customer Email: ${pdfEmail}
+
+==================================================
+[FOR OFFICE STAFF ACTION]
+1. Click Reply (sends to the customer's email above).
+2. Attach the "12-Questions Parent Guide" PDF.
+3. Copy and paste the template response below.
+4. Text the family at their number if logged in the sheet.
+
+[COPY/PASTE TEMPLATE RESPONSE TO CUSTOMER]
+--------------------------------------------------
+Hi!
+
+Thank you for requesting our 12 Questions Swim Lesson Guide. We have attached the PDF version to this email.
+
+If you have any questions about starting levels, pool schedules, or pricing for Arlington, Mansfield, or Grand Prairie, please let us know or text us at 817-973-5455.
+
+Best regards,
+Greg, Melissa & the British Swim School Team
+--------------------------------------------------`;
+    window.location.href = `mailto:goswimarlsgpra@britishswimschool.com?subject=12-Questions%20PDF%20Request&body=${encodeURIComponent(emailBody)}`;
   };
   const isIntro = slide === 0;
   const isFinish = slide === totalSlides - 1;
