@@ -841,3 +841,30 @@ button:focus-visible,a:focus-visible { outline:3px solid var(--yellow); outline-
     display: none !important;
   }
 }
+
+/* Quote Active Step Grid Column Adjustments */
+@media (min-width: 1024px) {
+  .quote-active-step .hold-content {
+    grid-template-columns: 1.25fr 1.05fr 0.7fr !important;
+    max-width: 1200px;
+    margin: 0 auto;
+    gap: 24px;
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+  }
+  .quote-active-step .hold-form {
+    display: contents !important;
+  }
+  .quote-active-step .quote-left-panel,
+  .quote-active-step .quote-right-panel {
+    align-self: start;
+  }
+}
+@media (max-width: 1023px) {
+  .quote-active-step .hold-content {
+    grid-template-columns: 1fr !important;
+  }
+  .quote-active-step .quote-calculator-container {
+    grid-template-columns: 1fr !important;
+  }
+}

@@ -401,42 +401,18 @@ export default function HoldForm() {
   const [loadingOpenings, setLoadingOpenings] = useState(false);
   const [counts, setCounts] = useState<Record<AgeGroup, number>>({
     under3: 0,
-    child: 1, // Default 1 swimmer
+    child: 0,
     youngAdult: 0,
     adult: 0,
     dolphin: 0
   });
 
-  const [swimmers, setSwimmers] = useState<Swimmer[]>([
-    {
-      id: "swimmer_1",
-      firstName: "",
-      dob: "",
-      gender: "",
-      ageGroup: "child",
-      placementMode: "",
-      selectedLevel: "",
-      adaptive: "",
-      firstProgram: "",
-      comfortable: "",
-      floatUnassisted: "",
-      jumpRollFloat: "",
-      glideRecover: "",
-      swimTenYards: "",
-      armsOut: "",
-      treadMinute: "",
-      fourStrokes: "",
-      location: "",
-      preferredSchedule: "",
-      pace: "foundation"
-    }
-  ]);
+  const [swimmers, setSwimmers] = useState<Swimmer[]>([]);
 
   // Sync swimmers array when category counts change
   const handleCountChange = (cat: AgeGroup, delta: number) => {
     const nextCounts = { ...counts, [cat]: Math.max(0, counts[cat] + delta) };
-    const totalCount = Object.values(nextCounts).reduce((a, b) => a + b, 0);
-    if (totalCount < 1) return; // Must have at least 1 swimmer
+
     
     setCounts(nextCounts);
 
@@ -509,8 +485,14 @@ export default function HoldForm() {
     } else {
       document.documentElement.classList.remove("wizard-active-steps");
     }
+    if (step === 1) {
+      document.documentElement.classList.add("quote-active-step");
+    } else {
+      document.documentElement.classList.remove("quote-active-step");
+    }
     return () => {
       document.documentElement.classList.remove("wizard-active-steps");
+      document.documentElement.classList.remove("quote-active-step");
     };
   }, [step]);
 
@@ -917,7 +899,11 @@ export default function HoldForm() {
             <div style={{ marginTop: '28px' }}>
               <h3 style={{ fontSize: '14px', fontWeight: '800', color: 'var(--navy)', marginBottom: '16px' }}>Lesson Frequency (Pace)</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {swimmers.map((swimmer, idx) => {
+                {swimmers.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '32px 20px', color: 'var(--muted)', background: '#fafbfe', borderRadius: '16px', border: '1px dashed #dce3ef', fontSize: '12px' }}>
+                    Use the buttons above to select your swimmers and build your tuition quote.
+                  </div>
+                ) : swimmers.map((swimmer, idx) => {
                   const pricingItem = quotePricing.items.find(item => item.swimmerId === swimmer.id);
                   const isPrimary = pricingItem?.isPrimary;
 
@@ -1002,7 +988,13 @@ export default function HoldForm() {
                   </tr>
                 </thead>
                 <tbody>
-                  {quotePricing.items.map((item, idx) => {
+                  {quotePricing.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)', fontSize: '12px' }}>
+                        No swimmers selected
+                      </td>
+                    </tr>
+                  ) : quotePricing.items.map((item, idx) => {
                     const isDolphin = item.ageGroup === "dolphin";
                     const isStandard = item.pace === "standard";
                     const isUnlimited = item.pace === "unlimited";
@@ -1087,9 +1079,10 @@ export default function HoldForm() {
 
             <button
               type="button"
+              disabled={swimmers.length === 0}
               onClick={goToContact}
               className="wizard-next"
-              style={{ width: '100%', padding: '14px', borderRadius: '99px', background: 'var(--blue)', color: '#fff', border: 'none', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }}
+              style={{ width: '100%', padding: '14px', borderRadius: '99px', background: swimmers.length === 0 ? '#cbd5e1' : 'var(--blue)', color: '#fff', border: 'none', fontWeight: '800', fontSize: '13px', cursor: swimmers.length === 0 ? 'not-allowed' : 'pointer' }}
             >
               Continue to Spot Hold & Schedules &arr;
             </button>
