@@ -822,3 +822,16 @@ button:focus-visible,a:focus-visible { outline:3px solid var(--yellow); outline-
   color: #fff;
   box-shadow: 0 4px 12px rgba(16,39,116,0.18);
 }
+
+/* Quote Calculator Styles */
+.quote-calculator-container {
+  margin-top: 24px;
+}
+@media (max-width: 768px) {
+  .quote-calculator-container {
+    grid-template-columns: 1fr !important;
+  }
+  .quote-right-panel {
+    position: static !important;
+  }
+}
