@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState, useEffect, useMemo } from "react";
+import { FormEvent, useState, useEffect, useMemo, Fragment } from "react";
 
 const LEAD_ENDPOINT = "https://script.google.com/macros/s/AKfycbyUCakByl8j40MxtKBkAqR5VT9zUbvE0-WK7Jltd47RN_MO9cIEipEXTWpW5fLQ2wqk3Q/exec";
 
 const SCHOOL_SMS = "+18179735455";
 const SCHOOL_EMAIL = "goswimarlsgpra@britishswimschool.com";
-const MAX_SMS_LENGTH = 600;
 
 export const LOCATION_DAYS: Record<string, string[]> = {
   arlington: ["Monday", "Wednesday", "Thursday", "Saturday"],
@@ -45,10 +44,11 @@ interface JackrabbitClass {
 }
 
 const AGE_GROUPS = [
-  { id: "under3", label: "Under 3", detail: "Parent & Me" },
-  { id: "child", label: "Ages 3–12", detail: "Child lessons" },
-  { id: "youngAdult", label: "Ages 13–18", detail: "Young Adult" },
-  { id: "adult", label: "Ages 18+", detail: "Adult lessons" },
+  { id: "under3", label: "Under 3 years old", detail: "Parent & Me" },
+  { id: "child", label: "Kids 3-12 years", detail: "Child lessons" },
+  { id: "youngAdult", label: "Teens", detail: "Young Adult" },
+  { id: "adult", label: "Adults", detail: "Adult lessons" },
+  { id: "dolphin", label: "Adaptive/Special Needs", detail: "Dolphin" },
 ] as const;
 
 const LOCATIONS = [
@@ -82,8 +82,6 @@ type Swimmer = {
   dobMessage?: string;
   pace: "foundation" | "standard" | "unlimited" | "dolphin_semi" | "dolphin_private";
 };
-
-const initialCounts: Record<AgeGroup, number> = { under3: 0, child: 0, youngAdult: 0, adult: 0 };
 
 function formatDob(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 8);
@@ -187,6 +185,7 @@ const LEVELS: Record<AgeGroup, string[]> = {
   child: ["Starfish", "Minnow", "Turtle 1", "Turtle 2", "Shark 1", "Shark 2", "Barracuda", "Dolphin"],
   youngAdult: ["Starfish", "Minnow", "Young Adult 1", "Young Adult 2", "Young Adult 3", "Dolphin"],
   adult: ["Adult 1", "Adult 2", "Adult 3", "Dolphin"],
+  dolphin: ["Dolphin"]
 };
 
 interface SwimmerPricing {
@@ -195,33 +194,61 @@ interface SwimmerPricing {
   ageGroup: AgeGroup;
   pace: "foundation" | "standard" | "unlimited" | "dolphin_semi" | "dolphin_private";
   baseRate: number;
+  class1Base: number;
+  class2Base: number;
+  class1Final: number;
+  class2Final: number;
   siblingDiscount: number;
   finalRate: number;
   registrationFee: number;
+  isPrimary: boolean;
+  registrationDiscount: number;
 }
 
-function calculatePricing(swimmersList: { id: string; firstName: string; ageGroup: AgeGroup; pace: "foundation" | "standard" | "unlimited" | "dolphin_semi" | "dolphin_private" }[]) {
+function calculatePricing(swimmersList: { id: string; firstName: string; ageGroup: AgeGroup; pace: Swimmer["pace"] }[]) {
   const rates = swimmersList.map(s => {
     let baseRate = 0;
     const pace = s.pace || "foundation";
+    let class1Base = 0;
+    let class2Base = 0;
     
-    if (pace === "dolphin_semi") {
-      baseRate = 249.99;
-    } else if (pace === "dolphin_private") {
-      baseRate = 499.99;
-    } else {
-      if (s.ageGroup === "under3") {
-        if (pace === "standard") baseRate = 159.99;
-        else if (pace === "unlimited") baseRate = 199.99;
-        else baseRate = 114.99;
-      } else if (s.ageGroup === "adult") {
-        if (pace === "standard") baseRate = 249.99;
-        else if (pace === "unlimited") baseRate = 299.99;
-        else baseRate = 159.99;
+    if (s.ageGroup === "dolphin") {
+      if (pace === "dolphin_private") {
+        baseRate = 499.99;
+        class1Base = 249.99;
+        class2Base = 250.00;
       } else {
-        if (pace === "standard") baseRate = 199.99;
-        else if (pace === "unlimited") baseRate = 249.99;
-        else baseRate = 139.99;
+        baseRate = 249.99;
+        class1Base = 249.99;
+        class2Base = 0;
+      }
+    } else {
+      let foundationRate = 139.99;
+      let standardRate = 199.99;
+      let unlimitedRate = 249.99;
+
+      if (s.ageGroup === "under3") {
+        foundationRate = 114.99;
+        standardRate = 159.99;
+        unlimitedRate = 199.99;
+      } else if (s.ageGroup === "adult") {
+        foundationRate = 159.99;
+        standardRate = 249.99;
+        unlimitedRate = 299.99;
+      }
+
+      if (pace === "standard") {
+        baseRate = standardRate;
+        class1Base = foundationRate;
+        class2Base = parseFloat((standardRate - foundationRate).toFixed(2));
+      } else if (pace === "unlimited") {
+        baseRate = unlimitedRate;
+        class1Base = foundationRate;
+        class2Base = parseFloat((unlimitedRate - foundationRate).toFixed(2));
+      } else {
+        baseRate = foundationRate;
+        class1Base = foundationRate;
+        class2Base = 0;
       }
     }
 
@@ -231,18 +258,33 @@ function calculatePricing(swimmersList: { id: string; firstName: string; ageGrou
       ageGroup: s.ageGroup,
       pace: pace as Swimmer["pace"],
       baseRate,
+      class1Base,
+      class2Base,
+      class1Final: class1Base,
+      class2Final: class2Base,
       siblingDiscount: 0,
       finalRate: baseRate,
-      registrationFee: 0
+      registrationFee: 49.99,
+      registrationDiscount: 0,
+      isPrimary: false
     };
   });
 
   const sorted = [...rates].sort((a, b) => b.baseRate - a.baseRate);
 
   sorted.forEach((item, idx) => {
-    if (idx > 0) {
-      item.siblingDiscount = item.baseRate * 0.10;
-      item.finalRate = item.baseRate - item.siblingDiscount;
+    if (idx === 0) {
+      item.isPrimary = true;
+    } else {
+      // 10% sibling discount
+      item.siblingDiscount = parseFloat((item.baseRate * 0.10).toFixed(2));
+      item.finalRate = parseFloat((item.baseRate - item.siblingDiscount).toFixed(2));
+      
+      // Breakdown rates sibling discount
+      item.class1Final = parseFloat((item.class1Base * 0.90).toFixed(2));
+      if (item.class2Base > 0) {
+        item.class2Final = parseFloat((item.class2Base * 0.90).toFixed(2));
+      }
     }
   });
 
@@ -254,6 +296,7 @@ function calculatePricing(swimmersList: { id: string; firstName: string; ageGrou
     const remainingCap = Math.max(0, familyMax - accumulatedEnrollmentFee);
     const fee = Math.min(individualFee, remainingCap);
     item.registrationFee = fee;
+    item.registrationDiscount = parseFloat((individualFee - fee).toFixed(2));
     accumulatedEnrollmentFee += fee;
   });
 
@@ -356,8 +399,14 @@ export default function HoldForm() {
   const [step, setStep] = useState(1);
   const [openings, setOpenings] = useState<JackrabbitClass[]>([]);
   const [loadingOpenings, setLoadingOpenings] = useState(false);
-  const [counts, setCounts] = useState(initialCounts);
-  
+  const [counts, setCounts] = useState<Record<AgeGroup, number>>({
+    under3: 0,
+    child: 1, // Default 1 swimmer
+    youngAdult: 0,
+    adult: 0,
+    dolphin: 0
+  });
+
   const [swimmers, setSwimmers] = useState<Swimmer[]>([
     {
       id: "swimmer_1",
@@ -382,6 +431,60 @@ export default function HoldForm() {
       pace: "foundation"
     }
   ]);
+
+  // Sync swimmers array when category counts change
+  const handleCountChange = (cat: AgeGroup, delta: number) => {
+    const nextCounts = { ...counts, [cat]: Math.max(0, counts[cat] + delta) };
+    const totalCount = Object.values(nextCounts).reduce((a, b) => a + b, 0);
+    if (totalCount < 1) return; // Must have at least 1 swimmer
+    
+    setCounts(nextCounts);
+
+    // Rebuild swimmers array preserving existing where possible
+    const nextSwimmers: Swimmer[] = [];
+    let sIdx = 1;
+
+    AGE_GROUPS.forEach(group => {
+      const needed = nextCounts[group.id];
+      // Try to find existing swimmers matching this category
+      const existing = swimmers.filter(s => s.ageGroup === group.id);
+      
+      for (let i = 0; i < needed; i++) {
+        if (existing[i]) {
+          nextSwimmers.push({
+            ...existing[i],
+            id: "swimmer_" + sIdx
+          });
+        } else {
+          nextSwimmers.push({
+            id: "swimmer_" + sIdx,
+            firstName: "",
+            dob: "",
+            gender: "",
+            ageGroup: group.id,
+            placementMode: "",
+            selectedLevel: "",
+            adaptive: group.id === "dolphin" ? "yes" : "",
+            firstProgram: "",
+            comfortable: "",
+            floatUnassisted: "",
+            jumpRollFloat: "",
+            glideRecover: "",
+            swimTenYards: "",
+            armsOut: "",
+            treadMinute: "",
+            fourStrokes: "",
+            location: "",
+            preferredSchedule: "",
+            pace: group.id === "dolphin" ? "dolphin_semi" : "foundation"
+          });
+        }
+        sIdx++;
+      }
+    });
+
+    setSwimmers(nextSwimmers);
+  };
 
   const [activeSwimmer, setActiveSwimmer] = useState(0);
   const [family, setFamily] = useState({ firstName: "", lastName: "", email: "", phone: "", smsConsent: false });
@@ -419,47 +522,14 @@ export default function HoldForm() {
 
     const patch: Partial<Swimmer> = { dob: formatted, dobMessage: "" };
 
-    if (detectedGroup && detectedGroup !== swimmer.ageGroup) {
+    // Dolphin is adaptive, keep dolphin category even if DOB detects something else
+    if (swimmer.ageGroup !== "dolphin" && detectedGroup && detectedGroup !== swimmer.ageGroup) {
       patch.ageGroup = detectedGroup;
       const newGroupLabel = AGE_GROUPS.find((g) => g.id === detectedGroup)?.label || detectedGroup;
       patch.dobMessage = "Based on " + (swimmer.firstName || "swimmer") + "'s birth date, we changed their swim group to " + newGroupLabel + " so they see the correct lessons.";
     }
 
     updateSwimmer(swimmerId, patch);
-  };
-
-  const addSwimmer = () => {
-    const newId = "swimmer_" + (swimmers.length + 1) + "_" + Math.random().toString(36).substring(2, 5);
-    setSwimmers([
-      ...swimmers,
-      {
-        id: newId,
-        firstName: "",
-        dob: "",
-        gender: "",
-        ageGroup: "child",
-        placementMode: "",
-        selectedLevel: "",
-        adaptive: "",
-        firstProgram: "",
-        comfortable: "",
-        floatUnassisted: "",
-        jumpRollFloat: "",
-        glideRecover: "",
-        swimTenYards: "",
-        armsOut: "",
-        treadMinute: "",
-        fourStrokes: "",
-        location: "",
-        preferredSchedule: "",
-        pace: "foundation"
-      }
-    ]);
-  };
-
-  const removeSwimmer = (id: string) => {
-    if (swimmers.length === 1) return;
-    setSwimmers(swimmers.filter(s => s.id !== id));
   };
 
   const quotePricing = useMemo(() => {
@@ -505,7 +575,7 @@ export default function HoldForm() {
     if (swimmer.placementMode === "known" && swimmer.selectedLevel) {
       return swimmer.selectedLevel;
     }
-    if (swimmer.adaptive === "yes") return "Dolphin";
+    if (swimmer.adaptive === "yes" || swimmer.ageGroup === "dolphin") return "Dolphin";
     if (swimmer.ageGroup === "under3") {
       if (swimmer.firstProgram === "yes") return "Tadpole";
       if (swimmer.comfortable === "no") return "Tadpole";
@@ -539,6 +609,7 @@ export default function HoldForm() {
   );
 
   const levelsValid = swimmers.every((swimmer) => {
+    if (swimmer.ageGroup === "dolphin") return true;
     if (swimmer.placementMode === "known") return !!swimmer.selectedLevel;
     if (swimmer.placementMode === "assessment") {
       if (swimmer.adaptive === "yes") return true;
@@ -811,111 +882,207 @@ export default function HoldForm() {
       </div>
 
       {step === 1 && (
-        <div className="quote-calculator-container" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '24px', alignItems: 'start' }}>
+        <div className="quote-calculator-container" style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '28px', alignItems: 'start' }}>
           <div className="quote-left-panel" style={{ background: '#fff', border: '1px solid #dce3ef', borderRadius: '20px', padding: '24px' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--navy)', marginBottom: '8px' }}>Build Your Tuition Quote</h2>
-            <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '20px' }}>Adjust swimmers, ages, and weekly class frequencies to instantly estimate your flat monthly subscription.</p>
+            <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--navy)', marginBottom: '4px' }}>Build Your Tuition Quote</h2>
+            <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '24px' }}>Adjust swimmers, ages, and weekly class frequencies to instantly estimate your flat monthly subscription.</p>
             
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {swimmers.map((swimmer, idx) => (
-                <div key={swimmer.id} style={{ border: '1px solid #eef2ff', borderRadius: '14px', padding: '16px', background: '#fafbfe', position: 'relative' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <strong style={{ fontSize: '13px', color: 'var(--navy)' }}>Swimmer #{(idx + 1)}</strong>
-                    {swimmers.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeSwimmer(swimmer.id)}
-                        style={{ background: 'none', border: 'none', color: 'var(--red)', fontSize: '11px', fontWeight: '800', cursor: 'pointer' }}
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {AGE_GROUPS.map((group) => (
+                <div key={group.id} className="swimmer-counter-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', border: '1px solid #dce3ef', borderRadius: '16px', background: '#fff' }}>
+                  <strong style={{ fontSize: '14px', color: 'var(--navy)', fontWeight: '800' }}>{group.label}</strong>
                   
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', fontWeight: '800', color: 'var(--navy)' }}>
-                      Age Group
-                      <select
-                        value={swimmer.ageGroup}
-                        onChange={(e) => updateSwimmer(swimmer.id, { ageGroup: e.target.value as AgeGroup })}
-                        style={{ padding: '8px', borderRadius: '8px', border: '1px solid #dce3ef', background: '#fff' }}
-                      >
-                        <option value="under3">Under 3 yrs (Parent & Me)</option>
-                        <option value="child">Ages 3–12 (Kids)</option>
-                        <option value="youngAdult">Ages 13–18 (Teens)</option>
-                        <option value="adult">Ages 18+ (Adults)</option>
-                      </select>
-                    </label>
-
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', fontWeight: '800', color: 'var(--navy)' }}>
-                      Weekly Class Frequency
-                      <select
-                        value={swimmer.pace}
-                        onChange={(e) => updateSwimmer(swimmer.id, { pace: e.target.value as Swimmer["pace"] })}
-                        style={{ padding: '8px', borderRadius: '8px', border: '1px solid #dce3ef', background: '#fff' }}
-                      >
-                        <option value="foundation">Foundation (1x/week)</option>
-                        <option value="standard">Standard (2x/week - Recommended!)</option>
-                        <option value="unlimited">Unlimited Pace</option>
-                        <option value="dolphin_semi">Adaptive / Special Needs (Semi-Private)</option>
-                        <option value="dolphin_private">Adaptive / Special Needs (Private)</option>
-                      </select>
-                    </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleCountChange(group.id, -1)}
+                      disabled={counts[group.id] === 0}
+                      style={{ width: '32px', height: '32px', border: '1px solid #dce3ef', borderRadius: '8px', background: '#fff', color: '#c8102e', fontSize: '18px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: counts[group.id] === 0 ? 'not-allowed' : 'pointer', opacity: counts[group.id] === 0 ? 0.4 : 1 }}
+                    >
+                      –
+                    </button>
+                    <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--navy)', width: '12px', textAlign: 'center' }}>{counts[group.id]}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleCountChange(group.id, 1)}
+                      style={{ width: '32px', height: '32px', border: '1px solid #dce3ef', borderRadius: '8px', background: '#fff', color: '#0056b3', fontSize: '18px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                    >
+                      +
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
 
-            <button
-              type="button"
-              onClick={addSwimmer}
-              style={{ marginTop: '16px', width: '100%', padding: '12px', borderRadius: '12px', border: '2px dashed var(--blue)', background: 'none', color: 'var(--blue)', fontWeight: '800', fontSize: '12px', cursor: 'pointer' }}
-            >
-              + Add Another Swimmer
-            </button>
+            <div style={{ marginTop: '28px' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: '800', color: 'var(--navy)', marginBottom: '16px' }}>Lesson Frequency (Pace)</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {swimmers.map((swimmer, idx) => {
+                  const pricingItem = quotePricing.items.find(item => item.swimmerId === swimmer.id);
+                  const isPrimary = pricingItem?.isPrimary;
+
+                  return (
+                    <div key={swimmer.id} style={{ border: '1px solid #eef2ff', borderRadius: '16px', padding: '20px', background: '#fafbfe' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--navy)' }}>Swimmer {idx + 1}</span>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <span style={{ fontSize: '9px', fontWeight: '800', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            {AGE_GROUPS.find(g => g.id === swimmer.ageGroup)?.label}
+                          </span>
+                          {isPrimary && (
+                            <span style={{ background: 'var(--navy)', color: '#fff', fontSize: '8px', fontWeight: '800', padding: '2px 8px', borderRadius: '99px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Primary</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        {swimmer.ageGroup === "dolphin" ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => updateSwimmer(swimmer.id, { pace: "dolphin_semi" })}
+                              className={"pace-btn " + (swimmer.pace === "dolphin_semi" ? "selected" : "")}
+                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "dolphin_semi" ? 'var(--navy)' : '#fff', color: swimmer.pace === "dolphin_semi" ? '#fff' : 'var(--navy)' }}
+                            >
+                              Semi-Private
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSwimmer(swimmer.id, { pace: "dolphin_private" })}
+                              className={"pace-btn " + (swimmer.pace === "dolphin_private" ? "selected" : "")}
+                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "dolphin_private" ? 'var(--navy)' : '#fff', color: swimmer.pace === "dolphin_private" ? '#fff' : 'var(--navy)' }}
+                            >
+                              Private
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => updateSwimmer(swimmer.id, { pace: "foundation" })}
+                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "foundation" ? 'var(--navy)' : '#fff', color: swimmer.pace === "foundation" ? '#fff' : 'var(--navy)' }}
+                            >
+                              1X Foundation
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSwimmer(swimmer.id, { pace: "standard" })}
+                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "standard" ? 'var(--navy)' : '#fff', color: swimmer.pace === "standard" ? '#fff' : 'var(--navy)' }}
+                            >
+                              2X Standard
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSwimmer(swimmer.id, { pace: "unlimited" })}
+                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "unlimited" ? 'var(--navy)' : '#fff', color: swimmer.pace === "unlimited" ? '#fff' : 'var(--navy)' }}
+                            >
+                              Unlimited
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           <div className="quote-right-panel" style={{ background: '#fff', border: '1px solid #dce3ef', borderRadius: '20px', padding: '24px', position: 'sticky', top: '24px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--navy)', marginBottom: '14px' }}>Tuition & Enrollment Summary</h3>
+            <h3 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--navy)', marginBottom: '16px' }}>Tuition & Enrollment Summary</h3>
             
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderBottom: '1px solid #eef2ff', paddingBottom: '14px', marginBottom: '14px' }}>
-              {quotePricing.items.map((item, idx) => (
-                <div key={item.swimmerId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                  <span style={{ color: 'var(--ink)' }}>
-                    Swimmer #{(idx + 1)} ({item.pace.replace('_', ' ')})
-                    {item.siblingDiscount > 0 && <small style={{ display: 'block', color: '#059669' }}>-10% Sibling Discount</small>}
-                  </span>
-                  <span style={{ fontWeight: '700', color: 'var(--navy)' }}>{"$" + item.finalRate.toFixed(2) + "/mo"}</span>
-                </div>
-              ))}
+            <div className="quote-table-wrapper" style={{ border: '1px solid #eef2ff', borderRadius: '12px', overflow: 'hidden', marginBottom: '24px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #eef2ff', color: 'var(--muted)', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <th style={{ padding: '8px 12px' }}>Line Item</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Original</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Discounts</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Final</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {quotePricing.items.map((item, idx) => {
+                    const isDolphin = item.ageGroup === "dolphin";
+                    const isStandard = item.pace === "standard";
+                    const isUnlimited = item.pace === "unlimited";
+                    const isPrivate = item.pace === "dolphin_private";
+                    
+                    const class1PaceLabel = isDolphin ? "Foundation Slot (Dolphin)" : "Foundation Slot";
+                    const class2PaceLabel = isPrivate ? "Private Surcharge" : (isStandard ? "Bundle slot (Standard pace)" : "Unlimited Surcharge");
+
+                    return (
+                      <Fragment key={item.swimmerId}>
+                        <tr style={{ background: '#f1f5f9' }}>
+                          <td colSpan={4} style={{ padding: '6px 12px', fontWeight: '850', color: 'var(--navy)', textTransform: 'uppercase', fontSize: '9px', letterSpacing: '0.04em' }}>
+                            <span style={{ color: '#c8102e', marginRight: '6px' }}>●</span> Swimmer {idx + 1} — Tuition Breakdown
+                          </td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid #eef2ff' }}>
+                          <td style={{ padding: '10px 12px' }}>
+                            <strong style={{ display: 'block', color: 'var(--navy)' }}>Class 1 Tuition</strong>
+                            <span style={{ color: 'var(--muted)', fontSize: '9px' }}>{class1PaceLabel}</span>
+                          </td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>${item.class1Base.toFixed(2)}</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                            {item.siblingDiscount > 0 ? (
+                              <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px' }}>
+                                Sibling (10%): -${(item.class1Base * 0.1).toFixed(2)}
+                              </span>
+                            ) : "-"}
+                          </td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.class1Final.toFixed(2)}</td>
+                        </tr>
+
+                        {(isStandard || isUnlimited || isPrivate) && (
+                          <tr style={{ borderBottom: '1px solid #eef2ff' }}>
+                            <td style={{ padding: '10px 12px' }}>
+                              <strong style={{ display: 'block', color: 'var(--navy)' }}>Class 2 Tuition</strong>
+                              <span style={{ color: 'var(--muted)', fontSize: '9px' }}>{class2PaceLabel}</span>
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>${item.class2Base.toFixed(2)}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                              {item.siblingDiscount > 0 ? (
+                                <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px' }}>
+                                  Sibling (10%): -${(item.class2Base * 0.1).toFixed(2)}
+                                </span>
+                              ) : "-"}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.class2Final.toFixed(2)}</td>
+                          </tr>
+                        )}
+
+                        <tr style={{ borderBottom: '1px solid #eef2ff' }}>
+                          <td style={{ padding: '10px 12px' }}>
+                            <strong style={{ display: 'block', color: 'var(--navy)' }}>Registration Fee</strong>
+                            <span style={{ color: 'var(--muted)', fontSize: '9px' }}>Annual signup / insurance fee</span>
+                          </td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>$49.99</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                            {item.registrationDiscount > 0 ? (
+                              <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px' }}>
+                                Cap Limit Part: -${item.registrationDiscount.toFixed(2)}
+                              </span>
+                            ) : "-"}
+                          </td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.registrationFee.toFixed(2)}</td>
+                        </tr>
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', borderBottom: '1px solid #eef2ff', paddingBottom: '14px', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--muted)' }}>Annual Enrollment Fee:</span>
-                <span style={{ fontWeight: '700', color: 'var(--navy)' }}>{"$" + quotePricing.totalRegistrationFees.toFixed(2)} <small style={{ color: 'var(--muted)', fontWeight: 'normal' }}>(capped)</small></span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--muted)' }}>Monthly Tuition Subscription:</span>
-                <span style={{ fontWeight: '700', color: 'var(--navy)' }}>{"$" + quotePricing.totalTuition.toFixed(2)}/mo</span>
-              </div>
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Total Due Today</span>
+              <strong style={{ fontSize: '32px', fontWeight: '900', color: '#c8102e', display: 'block', lineHeight: '1' }}>${quotePricing.firstMonthTotal.toFixed(2)}</strong>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '18px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: '800', color: 'var(--navy)' }}>
-                <span>First Month Total Due Today:</span>
-                <span style={{ color: 'var(--blue)' }}>{"$" + quotePricing.firstMonthTotal.toFixed(2)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--muted)' }}>
-                <span>Ongoing Monthly Subscription:</span>
-                <span>{"$" + quotePricing.totalTuition.toFixed(2)}/mo</span>
-              </div>
-            </div>
-
-            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '12px', fontSize: '10px', lineHeight: '1.4', color: '#1e3a8a', marginBottom: '18px' }}>
-              {"Your first payment on the day you enroll is " + quotePricing.firstMonthTotal.toFixed(2) + ". This includes your first month's tuition of " + quotePricing.totalTuition.toFixed(2) + " plus a one-time annual enrollment fee of " + quotePricing.totalRegistrationFees.toFixed(2) + "."}
+            <div style={{ fontSize: '11px', lineHeight: '1.5', color: 'var(--ink)', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #eef2ff', marginBottom: '24px' }}>
+              Your first payment on the day you enroll is <strong>${quotePricing.firstMonthTotal.toFixed(2)}</strong>. This includes your first month&apos;s tuition of <strong>${quotePricing.totalTuition.toFixed(2)}</strong> plus a one-time annual enrollment fee of <strong>${quotePricing.totalRegistrationFees.toFixed(2)}</strong>.
               <br/><br/>
-              {"Your ongoing monthly tuition will be " + quotePricing.totalTuition.toFixed(2) + " starting in your second month."}
+              Your ongoing monthly tuition will be <strong>${quotePricing.totalTuition.toFixed(2)}</strong> starting in your second month.
             </div>
 
             <button
@@ -991,6 +1158,12 @@ export default function HoldForm() {
 
           {swimmers.map((swimmer, index) => {
             if (activeSwimmer !== index) return null;
+            if (swimmer.ageGroup === "dolphin") return (
+              <div key={swimmer.id} className="swimmer-placement-flow" style={{ textAlign: 'center', padding: '24px', background: '#fafbfe', border: '1px solid #eef2ff', borderRadius: '16px' }}>
+                <strong style={{ color: 'var(--navy)', fontSize: '15px' }}>Dolphin Level Assigned</strong>
+                <p style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '6px' }}>Swimmers in the Adaptive/Special Needs program are automatically placed in our Dolphin curriculum.</p>
+              </div>
+            );
             return (
               <div key={swimmer.id} className="swimmer-placement-flow">
                 <div className="placement-mode-choice">
@@ -1033,7 +1206,7 @@ export default function HoldForm() {
                     {swimmer.adaptive === "no" && (
                       <>
                         <label className="question-item">
-                          <span>{"Is this the swimmer's first structured program?"}</span>
+                          <span>{"Is this the swimmer&apos;s first structured program?"}</span>
                           <div className="radio-row">
                             <button type="button" className={swimmer.firstProgram === "yes" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { firstProgram: "yes" })}>Yes</button>
                             <button type="button" className={swimmer.firstProgram === "no" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { firstProgram: "no" })}>No</button>
@@ -1226,7 +1399,7 @@ export default function HoldForm() {
             </label>
 
             {referral.source === "Word of Mouth / Referral" && (
-              <label>{"Referred by (friend's name)"}<input value={referral.friendName} onChange={(event) => setReferral({ ...referral, friendName: event.target.value })} placeholder={"Friend's full name"} required /></label>
+              <label>{"Referred by (friend&apos;s name)"}<input value={referral.friendName} onChange={(event) => setReferral({ ...referral, friendName: event.target.value })} placeholder={"Friend&apos;s full name"} required /></label>
             )}
 
             {referral.source === "Other" && (
