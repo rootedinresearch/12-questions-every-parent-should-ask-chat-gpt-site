@@ -49,6 +49,7 @@ type Swimmer = {
   fourStrokes: Answer;
   location: string;
   preferredSchedule: string;
+  dobMessage?: string;
 };
 
 const initialCounts: Record<AgeGroup, number> = { under3: 0, child: 0, youngAdult: 0, adult: 0 };
@@ -107,6 +108,26 @@ function smartFormatDob(value: string) {
   }
 
   return value;
+}
+
+function getAgeGroupFromDob(dobString: string): AgeGroup | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dobString);
+  if (!match) return null;
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  const year = Number(match[3]);
+  
+  const today = new Date();
+  let age = today.getFullYear() - year;
+  const m = today.getMonth() - (month - 1);
+  if (m < 0 || (m === 0 && today.getDate() < day)) {
+    age--;
+  }
+
+  if (age < 3) return "under3";
+  if (age < 13) return "child";
+  if (age < 18) return "youngAdult";
+  return "adult";
 }
 
 function validDob(value: string) {
@@ -183,6 +204,28 @@ export default function HoldForm() {
   const [step, setStep] = useState(1);
   const [counts, setCounts] = useState(initialCounts);
   const [swimmers, setSwimmers] = useState<Swimmer[]>([]);
+
+  const handleDobBlur = (swimmerId: string, rawValue: string) => {
+    const formatted = smartFormatDob(rawValue);
+    const detectedGroup = getAgeGroupFromDob(formatted);
+    const swimmer = swimmers.find((s) => s.id === swimmerId);
+    if (!swimmer) return;
+
+    const patch: Partial<Swimmer> = { dob: formatted };
+
+    if (detectedGroup && detectedGroup !== swimmer.ageGroup) {
+      patch.ageGroup = detectedGroup;
+      const oldGroupLabel = AGE_GROUPS.find((g) => g.id === swimmer.ageGroup)?.label || swimmer.ageGroup;
+      const newGroupLabel = AGE_GROUPS.find((g) => g.id === detectedGroup)?.label || detectedGroup;
+      patch.dobMessage = `Note: DOB auto-aligned ${swimmer.firstName || "swimmer"} from ${oldGroupLabel} to ${newGroupLabel}.`;
+      patch.selectedLevel = "";
+      patch.placementMode = "";
+    } else {
+      patch.dobMessage = "";
+    }
+
+    updateSwimmer(swimmerId, patch);
+  };
   const [activeSwimmer, setActiveSwimmer] = useState(0);
   const [family, setFamily] = useState({ firstName: "", lastName: "", email: "", phone: "", smsConsent: false });
   const [referral, setReferral] = useState({ source: "", friendName: "", other: "" });
@@ -383,7 +426,8 @@ export default function HoldForm() {
             <header><span>{index + 1}</span><div><strong>Swimmer {index + 1}</strong><small>{AGE_GROUPS.find((group) => group.id === swimmer.ageGroup)?.label}</small></div></header>
             <div className="form-grid three-column">
               <label>First name<input className={showValidationErrors && !swimmer.firstName.trim() ? "invalid-field" : ""} value={swimmer.firstName} onChange={(event) => updateSwimmer(swimmer.id, { firstName: event.target.value })} required /></label>
-              <label>Date of birth<span className="dob-input"><input className={((showValidationErrors && !swimmer.dob) || (swimmer.dob && !validDob(swimmer.dob))) ? "invalid-field" : ""} value={swimmer.dob} onChange={(event) => updateSwimmer(swimmer.id, { dob: formatDob(event.target.value) })} onBlur={(event) => updateSwimmer(swimmer.id, { dob: smartFormatDob(event.target.value) })} inputMode="numeric" autoComplete="bday" placeholder="MM/DD/YYYY" maxLength={10} required /></span></label>
+              <label>Date of birth<span className="dob-input"><input className={((showValidationErrors && !swimmer.dob) || (swimmer.dob && !validDob(swimmer.dob))) ? "invalid-field" : ""} value={swimmer.dob} onChange={(event) => updateSwimmer(swimmer.id, { dob: formatDob(event.target.value) })} onBlur={(event) => handleDobBlur(swimmer.id, event.target.value)} inputMode="numeric" autoComplete="bday" placeholder="MM/DD/YYYY" maxLength={10} required />
+              {swimmer.dobMessage && <p className="dob-warning-text" style={{ gridColumn: 'span 3', margin: '4px 0 0', color: 'var(--red)', fontSize: '10px', fontWeight: '800' }}>{swimmer.dobMessage}</p>}</span></label>
               <label>Gender<select className={showValidationErrors && !swimmer.gender ? "invalid-field" : ""} value={swimmer.gender} onChange={(event) => updateSwimmer(swimmer.id, { gender: event.target.value })} required><option value="" disabled>Select one</option><option>Female</option><option>Male</option><option>Nonbinary</option><option>Prefer not to say</option></select></label>
             </div>
           </article>)}
