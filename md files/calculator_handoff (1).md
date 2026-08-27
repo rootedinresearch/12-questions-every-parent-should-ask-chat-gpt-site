@@ -12,9 +12,9 @@ Tuition is billed on a monthly subscription basis based on student age/level cat
 
 | Age / Category | Foundation Pace (1x/week) | Standard Pace (2x/week) | Unlimited Pace (Unlimited) |
 | :--- | :--- | :--- | :--- |
-| **Under 3 Years Old** *(Tadpole, Swimboree, Seahorse)* | **$114.99** / mo | **$159.99** / mo | **$199.99** / mo |
-| **Kids 3–12, Teens & Pre-Swim Team** *(Starfish, Minnow, Turtle 1, Turtle 2, Shark 1, Shark 2, Barracuda, Young Adult)* | **$139.99** / mo | **$199.99** / mo | **$249.99** / mo |
-| **Adults** *(Adult Level 1, 2, 3)* | **$159.99** / mo | **$249.99** / mo | **$299.99** / mo |
+| **Under 3 Years Old** *(Tadpole, Swimboree, Seahorse)* | **$114.99** / mo | **$199.99** / mo | **$399.99** / mo |
+| **Kids 3–12, Teens & Pre-Swim Team** *(Starfish, Minnow, Turtle 1, Turtle 2, Shark 1, Shark 2, Barracuda, Young Adult)* | **$139.99** / mo | **$249.99** / mo | **$449.99** / mo |
+| **Adults** *(Adult Level 1, 2, 3)* | **$159.99** / mo | **$299.99** / mo | **$499.99** / mo |
 | **Special Needs / Adaptive (Dolphin)** | **Semi-Private:** $249.99 / mo | **Private:** $499.99 / mo | N/A |
 
 *Note: All prices are fully configurable in app settings, but defaults follow the matrix above.*

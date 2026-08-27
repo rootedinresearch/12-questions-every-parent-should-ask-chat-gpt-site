@@ -5,6 +5,9 @@ import { FormEvent, useState, useEffect, useMemo, Fragment } from "react";
 
 const LEAD_ENDPOINT = "https://script.google.com/macros/s/AKfycbyUCakByl8j40MxtKBkAqR5VT9zUbvE0-WK7Jltd47RN_MO9cIEipEXTWpW5fLQ2wqk3Q/exec";
 
+// Toggle setting: set to true to enforce required fields in production; false to bypass for testing
+const ENFORCE_REQUIRED_FIELDS = false;
+
 const SCHOOL_SMS = "+18179735455";
 const SCHOOL_EMAIL = "goswimarlsgpra@britishswimschool.com";
 
@@ -12,6 +15,23 @@ export const LOCATION_DAYS: Record<string, string[]> = {
   arlington: ["Tuesday", "Friday"],
   mansfield: ["Thursday", "Friday", "Saturday"],
   grandPrairie: ["Monday", "Wednesday", "Saturday"]
+};
+
+export const LOCATION_SCHEDULES: Record<string, { day: string; hours: string }[]> = {
+  arlington: [
+    { day: "Tuesday", hours: "4:00 PM – 8:00 PM" },
+    { day: "Friday", hours: "4:00 PM – 8:00 PM" }
+  ],
+  mansfield: [
+    { day: "Thursday", hours: "4:00 PM – 8:00 PM" },
+    { day: "Friday", hours: "4:00 PM – 8:00 PM" },
+    { day: "Saturday", hours: "8:30 AM – 1:00 PM" }
+  ],
+  grandPrairie: [
+    { day: "Monday", hours: "4:00 PM – 8:00 PM" },
+    { day: "Wednesday", hours: "4:00 PM – 8:00 PM" },
+    { day: "Saturday", hours: "8:30 AM – 1:00 PM" }
+  ]
 };
 
 interface JackrabbitClass {
@@ -70,13 +90,14 @@ type Swimmer = {
   adaptive: Answer;
   firstProgram: Answer;
   comfortable: Answer;
+  separateCaregiver: Answer;
+  waitTurn: Answer;
   floatUnassisted: Answer;
   jumpRollFloat: Answer;
-  glideRecover: Answer;
-  swimTenYards: Answer;
-  armsOut: Answer;
+  swimFreestyleBackstroke: Answer;
+  faceInWater: Answer;
+  swimTenYardsSideBreath: Answer;
   treadMinute: Answer;
-  fourStrokes: Answer;
   location: string;
   preferredSchedule: string;
   dobMessage?: string;
@@ -173,6 +194,11 @@ function validDob(value: string) {
 
 const BEGINNER_LEVELS = ["Tadpole", "Starfish", "Young Adult 1", "Adult 1"];
 
+function getRatio(level: string): string | null {
+  const match = (level || "").match(/\b(\d+:\d+)\b/);
+  return match ? match[1] : null;
+}
+
 function getLevelDisplay(level: string) {
   if (BEGINNER_LEVELS.includes(level)) {
     return level + " (Beginners)";
@@ -181,12 +207,342 @@ function getLevelDisplay(level: string) {
 }
 
 const LEVELS: Record<AgeGroup, string[]> = {
-  under3: ["Tadpole", "Swimboree", "Seahorse", "Dolphin"],
-  child: ["Starfish", "Minnow", "Turtle 1", "Turtle 2", "Shark 1", "Shark 2", "Barracuda", "Dolphin"],
-  youngAdult: ["Starfish", "Minnow", "Young Adult 1", "Young Adult 2", "Young Adult 3", "Dolphin"],
+  under3: ["Tadpole 6:1", "Swimboree 4:1", "Seahorse 4:1", "Dolphin"],
+  child: ["Starfish 4:1", "Minnow 4:1", "Turtle 1 4:1", "Turtle 2 6:1", "Shark 1", "Shark 2", "Barracuda", "Dolphin"],
+  youngAdult: ["Young Adult 1", "Young Adult 2", "Young Adult 3", "Dolphin"],
   adult: ["Adult 1", "Adult 2", "Adult 3", "Dolphin"],
   dolphin: ["Dolphin"]
 };
+
+const LEVEL_DESCRIPTIONS: Record<string, string> = {
+  "Tadpole 6:1": "Parent & Me water acclimation and gentle submersions.",
+  "Swimboree 4:1": "Building water trust, back floating, and independent paddle.",
+  "Seahorse 4:1": "Independent survival floating and rollovers in the water.",
+  "Starfish 4:1": "Building water confidence, breath control, and independent back float.",
+  "Minnow 4:1": "Independent back float, survival rollover, and beginner safety skills.",
+  "Turtle 1 4:1": "Streamlined push-glides, backstroke kick, and survival rollovers.",
+  "Turtle 2 6:1": "Propulsion development, freestyle arm recovery, and side breathing.",
+  "Shark 1": "Refined freestyle, backstroke, and introduction to breaststroke.",
+  "Shark 2": "Butterfly introduction, endurance, and flip turns.",
+  "Barracuda": "Advanced four-stroke mastery and pre-swim team conditioning.",
+  "Young Adult 1": "Teen water safety, breath control, and unassisted floating.",
+  "Young Adult 2": "Teen stroke development and freestyle endurance.",
+  "Young Adult 3": "Advanced teen stroke mastery and conditioning.",
+  "Adult 1": "Adult water comfort, floating, and breath management.",
+  "Adult 2": "Adult stroke mechanics, rhythmic breathing, and endurance.",
+  "Adult 3": "Advanced adult technique, multi-stroke proficiency, and fitness.",
+  "Dolphin": "Personalized adaptive lessons tailored to special needs."
+};
+
+interface QuestionDef {
+  key: keyof Swimmer;
+  text: string;
+  stepNum: number;
+  totalSteps: number;
+}
+
+function isUnder24Months(swimmer: Swimmer): boolean {
+  if (swimmer.dob && validDob(swimmer.dob)) {
+    const [m, d, y] = swimmer.dob.split("/").map(Number);
+    const birth = new Date(y, m - 1, d);
+    const now = new Date();
+    let months = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+    if (now.getDate() < birth.getDate()) months--;
+    return months < 24;
+  }
+  return false;
+}
+
+function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
+  if (swimmer.ageGroup === "dolphin") return null;
+
+  const under24m = isUnder24Months(swimmer);
+  const rawName = swimmer.firstName ? swimmer.firstName.trim() : "";
+  const name = rawName || "the swimmer";
+  const namePossessive = rawName ? `${rawName}'s` : "the swimmer's";
+
+  // --- Q0: Adaptive / Modified Screening Question ---
+  if (!swimmer.adaptive) {
+    const total = swimmer.ageGroup === "child" ? 6 : (swimmer.ageGroup === "under3" ? (under24m ? 3 : 5) : 5);
+    return {
+      key: "adaptive",
+      text: `Does ${name} need a modified or adaptive lesson?`,
+      stepNum: 1,
+      totalSteps: total
+    };
+  }
+  if (swimmer.adaptive === "yes") return null; // -> Dolphin (Requests Private or Semi-Private)
+
+  // --- Child (3-24 Months) Workflow ---
+  if (swimmer.ageGroup === "under3" && under24m) {
+    if (!swimmer.firstProgram) {
+      return {
+        key: "firstProgram",
+        text: `Is this ${namePossessive} first time in swim lessons?`,
+        stepNum: 2,
+        totalSteps: 3
+      };
+    }
+    if (!swimmer.comfortable) {
+      return {
+        key: "comfortable",
+        text: `Is ${name} comfortable in the water and can they fully submerge their head?`,
+        stepNum: 3,
+        totalSteps: 3
+      };
+    }
+    return null; // NO -> Tadpole 6:1, YES -> Swimboree 4:1
+  }
+
+  // --- Child (24-36 Months) Workflow ---
+  if (swimmer.ageGroup === "under3") {
+    if (!swimmer.firstProgram) {
+      return {
+        key: "firstProgram",
+        text: `Is this ${namePossessive} first time in swim lessons?`,
+        stepNum: 2,
+        totalSteps: 5
+      };
+    }
+    if (swimmer.firstProgram === "yes") return null; // -> Tadpole 6:1
+
+    if (!swimmer.comfortable) {
+      return {
+        key: "comfortable",
+        text: `Is ${name} comfortable in the water and can they fully submerge their head?`,
+        stepNum: 3,
+        totalSteps: 5
+      };
+    }
+    if (swimmer.comfortable === "no") return null; // -> Tadpole 6:1
+
+    if (!swimmer.separateCaregiver) {
+      return {
+        key: "separateCaregiver",
+        text: `Can ${name} separate from parent/caregiver and work directly with our instructors?`,
+        stepNum: 4,
+        totalSteps: 5
+      };
+    }
+    if (swimmer.separateCaregiver === "no") return null; // -> Swimboree 4:1
+
+    if (!swimmer.waitTurn) {
+      return {
+        key: "waitTurn",
+        text: `Can ${name} sit on the edge of the pool and wait independently for their turn?`,
+        stepNum: 5,
+        totalSteps: 5
+      };
+    }
+    return null; // NO -> Swimboree 4:1, YES -> Seahorse 4:1
+  }
+
+  // --- Child (3-12 Years) Workflow ---
+  if (swimmer.ageGroup === "child") {
+    if (!swimmer.firstProgram) {
+      return {
+        key: "firstProgram",
+        text: `Is this ${namePossessive} first time in swim lessons?`,
+        stepNum: 2,
+        totalSteps: 6
+      };
+    }
+    if (swimmer.firstProgram === "yes") return null; // -> Starfish 4:1
+
+    if (!swimmer.comfortable) {
+      return {
+        key: "comfortable",
+        text: `Is ${name} comfortable in the water and fully able to submerge their head?`,
+        stepNum: 3,
+        totalSteps: 6
+      };
+    }
+    if (swimmer.comfortable === "no") return null; // -> Starfish 4:1
+
+    if (!swimmer.floatUnassisted) {
+      return {
+        key: "floatUnassisted",
+        text: `Is ${name} able to float on their back unassisted without a life vest?`,
+        stepNum: 4,
+        totalSteps: 6
+      };
+    }
+    if (swimmer.floatUnassisted === "no") return null; // -> Starfish 4:1
+
+    if (!swimmer.jumpRollFloat) {
+      return {
+        key: "jumpRollFloat",
+        text: `Is ${name} able to jump in, roll over and float without assistance?`,
+        stepNum: 5,
+        totalSteps: 6
+      };
+    }
+    if (swimmer.jumpRollFloat === "no") return null; // -> Minnow 4:1
+
+    if (!swimmer.swimFreestyleBackstroke) {
+      return {
+        key: "swimFreestyleBackstroke",
+        text: `Can ${name} swim freestyle and backstroke with their arms out of the water?`,
+        stepNum: 6,
+        totalSteps: 6
+      };
+    }
+    return null; // NO -> Turtle 1 4:1, YES -> Turtle 2 6:1
+  }
+
+  // --- Young Adult (13-17) Workflow ---
+  if (swimmer.ageGroup === "youngAdult") {
+    if (!swimmer.firstProgram) {
+      return {
+        key: "firstProgram",
+        text: `Is this ${namePossessive} first time in swim lessons?`,
+        stepNum: 2,
+        totalSteps: 5
+      };
+    }
+    if (swimmer.firstProgram === "yes") return null; // -> Young Adult 1
+
+    if (!swimmer.comfortable) {
+      return {
+        key: "comfortable",
+        text: `Is ${name} comfortable in the water and can they float on their back by themselves?`,
+        stepNum: 3,
+        totalSteps: 5
+      };
+    }
+    if (swimmer.comfortable === "no") return null; // -> Young Adult 1
+
+    if (!swimmer.faceInWater) {
+      return {
+        key: "faceInWater",
+        text: `Can ${name} put their face in the water and hold their breath?`,
+        stepNum: 4,
+        totalSteps: 5
+      };
+    }
+    if (swimmer.faceInWater === "no") return null; // -> Young Adult 1
+
+    if (!swimmer.swimTenYardsSideBreath) {
+      return {
+        key: "swimTenYardsSideBreath",
+        text: `Can ${name} swim 10 yards of freestyle and backstroke with their face in the water and utilizing a side breath?`,
+        stepNum: 5,
+        totalSteps: 5
+      };
+    }
+    return null; // NO -> Young Adult 2, YES -> Young Adult 3
+  }
+
+  // --- Adult (18+) Workflow ---
+  if (swimmer.ageGroup === "adult") {
+    if (!swimmer.firstProgram) {
+      return {
+        key: "firstProgram",
+        text: rawName ? `Has ${rawName} had structured swim lessons before?` : "Have you had swim lessons before?",
+        stepNum: 2,
+        totalSteps: 5
+      };
+    }
+    if (swimmer.firstProgram === "no") return null; // If NO (first time) -> Adult 1
+
+    if (!swimmer.floatUnassisted) {
+      return {
+        key: "floatUnassisted",
+        text: rawName ? `Can ${rawName} float on their back for 20 seconds?` : "Can you float on your back by yourself for 20 seconds?",
+        stepNum: 3,
+        totalSteps: 5
+      };
+    }
+    if (swimmer.floatUnassisted === "no") return null; // -> Adult 1
+
+    if (!swimmer.treadMinute) {
+      return {
+        key: "treadMinute",
+        text: rawName ? `Can ${rawName} tread water for 1 minute?` : "Can you tread water for 1 minute?",
+        stepNum: 4,
+        totalSteps: 5
+      };
+    }
+    if (swimmer.treadMinute === "no") return null; // -> Adult 2
+
+    if (!swimmer.swimFreestyleBackstroke) {
+      return {
+        key: "swimFreestyleBackstroke",
+        text: rawName ? `Can ${rawName} swim freestyle and backstroke with arms out of the water?` : "Can you swim the freestyle and backstroke with your arms out of the water?",
+        stepNum: 5,
+        totalSteps: 5
+      };
+    }
+    return null; // NO -> Adult 2, YES -> Adult 3
+  }
+
+  return null;
+}
+
+function startingLevel(swimmer: Swimmer): string {
+  if (swimmer.placementMode === "known" && swimmer.selectedLevel) {
+    return swimmer.selectedLevel;
+  }
+  if (swimmer.adaptive === "yes" || swimmer.ageGroup === "dolphin") return "Dolphin";
+
+  const under24m = isUnder24Months(swimmer);
+
+  // Child (3-24 Months)
+  if (swimmer.ageGroup === "under3" && under24m) {
+    if (swimmer.comfortable === "no") return "Tadpole 6:1";
+    if (swimmer.comfortable === "yes") return "Swimboree 4:1";
+    return "";
+  }
+
+  // Child (24-36 Months)
+  if (swimmer.ageGroup === "under3") {
+    if (swimmer.firstProgram === "yes") return "Tadpole 6:1";
+    if (swimmer.comfortable === "no") return "Tadpole 6:1";
+    if (swimmer.separateCaregiver === "no") return "Swimboree 4:1";
+    if (swimmer.waitTurn === "no") return "Swimboree 4:1";
+    if (swimmer.waitTurn === "yes") return "Seahorse 4:1";
+    return "";
+  }
+
+  // Child (3-12 Years)
+  if (swimmer.ageGroup === "child") {
+    if (swimmer.firstProgram === "yes") return "Starfish 4:1";
+    if (swimmer.comfortable === "no") return "Starfish 4:1";
+    if (swimmer.floatUnassisted === "no") return "Starfish 4:1";
+    if (swimmer.jumpRollFloat === "no") return "Minnow 4:1";
+    if (swimmer.swimFreestyleBackstroke === "no") return "Turtle 1 4:1";
+    if (swimmer.swimFreestyleBackstroke === "yes") return "Turtle 2 6:1";
+    return "";
+  }
+
+  // Young Adult (13-17 Years)
+  if (swimmer.ageGroup === "youngAdult") {
+    if (swimmer.firstProgram === "yes") return "Young Adult 1";
+    if (swimmer.comfortable === "no") return "Young Adult 1";
+    if (swimmer.faceInWater === "no") return "Young Adult 1";
+    if (swimmer.swimTenYardsSideBreath === "no") return "Young Adult 2";
+    if (swimmer.swimTenYardsSideBreath === "yes") return "Young Adult 3";
+    return "";
+  }
+
+  // Adult (18+ Years)
+  if (swimmer.ageGroup === "adult") {
+    if (swimmer.firstProgram === "no") return "Adult 1";
+    if (swimmer.floatUnassisted === "no") return "Adult 1";
+    if (swimmer.treadMinute === "no") return "Adult 2";
+    if (swimmer.swimFreestyleBackstroke === "no") return "Adult 2";
+    if (swimmer.swimFreestyleBackstroke === "yes") return "Adult 3";
+    return "";
+  }
+
+  return "";
+}
+
+function isPlacementComplete(swimmer: Swimmer): boolean {
+  if (swimmer.ageGroup === "dolphin") return true;
+  if (swimmer.placementMode === "known") return !!swimmer.selectedLevel;
+  return getNextQuestion(swimmer) === null && !!startingLevel(swimmer);
+}
 
 interface SwimmerPricing {
   swimmerId: string;
@@ -196,8 +552,12 @@ interface SwimmerPricing {
   baseRate: number;
   class1Base: number;
   class2Base: number;
+  class2BundleDiscount: number;
+  class2BundledRate: number;
+  unlimitedAddonRate: number;
   class1Final: number;
   class2Final: number;
+  unlimitedAddonFinal: number;
   siblingDiscount: number;
   finalRate: number;
   registrationFee: number;
@@ -211,44 +571,62 @@ function calculatePricing(swimmersList: { id: string; firstName: string; ageGrou
     const pace = s.pace || "foundation";
     let class1Base = 0;
     let class2Base = 0;
+    let class2BundleDiscount = 0;
+    let class2BundledRate = 0;
+    let unlimitedAddonRate = 0;
     
     if (s.ageGroup === "dolphin") {
       if (pace === "dolphin_private") {
         baseRate = 499.99;
-        class1Base = 249.99;
-        class2Base = 250.00;
+        class1Base = 499.99;
+        class2Base = 0;
+        class2BundledRate = 0;
+        class2BundleDiscount = 0;
+        unlimitedAddonRate = 0;
       } else {
         baseRate = 249.99;
         class1Base = 249.99;
         class2Base = 0;
+        class2BundledRate = 0;
+        class2BundleDiscount = 0;
+        unlimitedAddonRate = 0;
       }
     } else {
       let foundationRate = 139.99;
-      let standardRate = 199.99;
-      let unlimitedRate = 249.99;
+      let standardRate = 249.99;
+      let unlimitedRate = 449.99;
 
       if (s.ageGroup === "under3") {
         foundationRate = 114.99;
-        standardRate = 159.99;
-        unlimitedRate = 199.99;
+        standardRate = 199.99;
+        unlimitedRate = 399.99;
       } else if (s.ageGroup === "adult") {
         foundationRate = 159.99;
-        standardRate = 249.99;
-        unlimitedRate = 299.99;
+        standardRate = 299.99;
+        unlimitedRate = 499.99;
       }
 
       if (pace === "standard") {
         baseRate = standardRate;
         class1Base = foundationRate;
-        class2Base = parseFloat((standardRate - foundationRate).toFixed(2));
+        class2Base = foundationRate; // Original 1-class rate
+        class2BundledRate = parseFloat((standardRate - foundationRate).toFixed(2));
+        class2BundleDiscount = parseFloat((foundationRate - class2BundledRate).toFixed(2));
+        unlimitedAddonRate = 0;
       } else if (pace === "unlimited") {
         baseRate = unlimitedRate;
         class1Base = foundationRate;
-        class2Base = parseFloat((unlimitedRate - foundationRate).toFixed(2));
+        class2Base = foundationRate; // Standard 2x/wk class rate
+        class2BundledRate = parseFloat((standardRate - foundationRate).toFixed(2));
+        class2BundleDiscount = parseFloat((foundationRate - class2BundledRate).toFixed(2));
+        unlimitedAddonRate = parseFloat((unlimitedRate - standardRate).toFixed(2)); // Difference between Unlimited and 2x/wk ($200.00)
       } else {
         baseRate = foundationRate;
         class1Base = foundationRate;
         class2Base = 0;
+        class2BundledRate = 0;
+        class2BundleDiscount = 0;
+        unlimitedAddonRate = 0;
       }
     }
 
@@ -260,8 +638,12 @@ function calculatePricing(swimmersList: { id: string; firstName: string; ageGrou
       baseRate,
       class1Base,
       class2Base,
+      class2BundleDiscount,
+      class2BundledRate,
+      unlimitedAddonRate,
       class1Final: class1Base,
-      class2Final: class2Base,
+      class2Final: class2BundledRate,
+      unlimitedAddonFinal: unlimitedAddonRate,
       siblingDiscount: 0,
       finalRate: baseRate,
       registrationFee: 49.99,
@@ -282,8 +664,11 @@ function calculatePricing(swimmersList: { id: string; firstName: string; ageGrou
       
       // Breakdown rates sibling discount
       item.class1Final = parseFloat((item.class1Base * 0.90).toFixed(2));
-      if (item.class2Base > 0) {
-        item.class2Final = parseFloat((item.class2Base * 0.90).toFixed(2));
+      if (item.class2BundledRate > 0) {
+        item.class2Final = parseFloat((item.class2BundledRate * 0.90).toFixed(2));
+      }
+      if (item.unlimitedAddonRate > 0) {
+        item.unlimitedAddonFinal = parseFloat((item.unlimitedAddonRate * 0.90).toFixed(2));
       }
     }
   });
@@ -317,30 +702,58 @@ function calculatePricing(swimmersList: { id: string; firstName: string; ageGrou
 function matchClassLevel(classObj: JackrabbitClass, swimmerLevel: string): boolean {
   const cat1 = (classObj.category1 || "").toLowerCase();
   const name = (classObj.name || "").toLowerCase();
-  const target = swimmerLevel.toLowerCase();
+  const baseTarget = (swimmerLevel || "").toLowerCase().replace(/\s*\d+:\d+$/, "").trim();
 
-  if (cat1.includes(target) || name.includes(target)) return true;
+  if (!baseTarget) return true;
 
-  if (target === "adult 1" && cat1.includes("adult level 1")) return true;
-  if (target === "adult 2" && cat1.includes("adult level 2")) return true;
-  if (target === "adult 3" && cat1.includes("adult level 3")) return true;
-  if (target === "barracuda" && (cat1.includes("barracuda") || name.includes("barracuda"))) return true;
+  if (cat1.includes(baseTarget) || name.includes(baseTarget)) return true;
+
+  if (baseTarget.startsWith("turtle 1") && (cat1.includes("turtle 1") || name.includes("turtle 1") || cat1.includes("turtle1") || name.includes("turtle1"))) return true;
+  if (baseTarget.startsWith("turtle 2") && (cat1.includes("turtle 2") || name.includes("turtle 2") || cat1.includes("turtle2") || name.includes("turtle2"))) return true;
+  if (baseTarget.startsWith("shark 1") && (cat1.includes("shark 1") || name.includes("shark 1") || cat1.includes("shark1") || name.includes("shark1"))) return true;
+  if (baseTarget.startsWith("shark 2") && (cat1.includes("shark 2") || name.includes("shark 2") || cat1.includes("shark2") || name.includes("shark2"))) return true;
+
+  if (baseTarget === "adult 1" && (cat1.includes("adult level 1") || cat1.includes("adult 1") || name.includes("adult 1") || name.includes("adult level 1"))) return true;
+  if (baseTarget === "adult 2" && (cat1.includes("adult level 2") || cat1.includes("adult 2") || name.includes("adult 2") || name.includes("adult level 2"))) return true;
+  if (baseTarget === "adult 3" && (cat1.includes("adult level 3") || cat1.includes("adult 3") || name.includes("adult 3") || name.includes("adult level 3"))) return true;
+
+  if (baseTarget.includes("young adult")) {
+    if (baseTarget.includes("1") && (cat1.includes("young adult 1") || name.includes("young adult 1") || cat1.includes("young adult level 1"))) return true;
+    if (baseTarget.includes("2") && (cat1.includes("young adult 2") || name.includes("young adult 2") || cat1.includes("young adult level 2"))) return true;
+    if (baseTarget.includes("3") && (cat1.includes("young adult 3") || name.includes("young adult 3") || cat1.includes("young adult level 3"))) return true;
+    if (cat1.includes("young adult") || name.includes("young adult")) return true;
+  }
+
+  if (baseTarget === "dolphin" && (cat1.includes("dolphin") || name.includes("dolphin") || cat1.includes("adaptive") || name.includes("adaptive"))) return true;
 
   return false;
+}
+
+function getLocationIdFromCode(classLocCode: string): string {
+  const code = (classLocCode || "").toLowerCase();
+  if (code === "laflitt" || code === "arl") return "arlington";
+  if (code === "lafgp" || code === "gp") return "grandPrairie";
+  if (code === "man24h" || code === "man") return "mansfield";
+  return "";
 }
 
 function matchLocation(classLocCode: string, selectedLocs: string[]): boolean {
-  const code = (classLocCode || "").toLowerCase();
-  if (code === "laflitt" || code === "arl") return selectedLocs.includes("arlington");
-  if (code === "lafgp" || code === "gp") return selectedLocs.includes("grandPrairie");
-  if (code === "man24h" || code === "man") return selectedLocs.includes("mansfield");
-  return false;
+  const locId = getLocationIdFromCode(classLocCode);
+  return Boolean(locId && selectedLocs.includes(locId));
 }
 
-function matchDays(classObj: JackrabbitClass, preferredDaysString: string): boolean {
-  const pref = preferredDaysString ? preferredDaysString.split(",").map(d => d.trim().toLowerCase()).filter(Boolean) : [];
-  if (pref.length === 0) return true;
-  
+function matchDaysAndLocation(classObj: JackrabbitClass, selectedLocs: string[], selectedLocDays: string[]): boolean {
+  const locId = getLocationIdFromCode(classObj.location_code);
+  if (!locId || !selectedLocs.includes(locId)) return false;
+
+  // Filter selected days specific to this location
+  const locDaysForThisLoc = selectedLocDays
+    .filter(item => item.startsWith(locId + ":"))
+    .map(item => item.split(":")[1].toLowerCase());
+
+  // If the user selected this location but didn't restrict to specific days, match any day for this location
+  if (locDaysForThisLoc.length === 0) return true;
+
   const m = classObj.meeting_days || {};
   const daysMap: Record<string, boolean> = {
     monday: m.mon,
@@ -351,8 +764,8 @@ function matchDays(classObj: JackrabbitClass, preferredDaysString: string): bool
     saturday: m.sat,
     sunday: m.sun
   };
-  
-  return pref.some(day => daysMap[day]);
+
+  return locDaysForThisLoc.some(d => daysMap[d]);
 }
 
 function parseTimeToMinutes(timeStr: string): number {
@@ -384,18 +797,141 @@ function getInstructorName(classObj: JackrabbitClass): string {
   return "Staff";
 }
 
-function getPreciseRegisterUrl(cls: JackrabbitClass, level: string, locCode: string): string {
-  const basePreload = "https://app.jackrabbitclass.com/regv2/regga.aspx?id=553758";
-  const finalLoc = locCode === "LAFGP" || locCode === "gp" ? "LAFGP" : (locCode === "LAFLITT" || locCode === "arl" ? "LAFLITT" : "MAN24H");
-  
-  if (cls.id && String(cls.id).length > 4) {
-    return basePreload + "&preLoadClassID=" + cls.id + "&loc=" + finalLoc;
+function getOpeningsCount(classObj: JackrabbitClass): number {
+  if (classObj.openings && typeof classObj.openings.calculated_openings === "number") {
+    return classObj.openings.calculated_openings;
   }
-  return basePreload + "&loc=" + finalLoc;
+  return 0;
+}
+
+const REFERRAL_OPTIONS = [
+  "Email",
+  "Event/Sponsorship",
+  "Google/Search",
+  "Mail Advertising",
+  "News/Press",
+  "Other Online Source",
+  "Rackcard/Flyer",
+  "Referral",
+  "Signage",
+  "Social Media"
+];
+
+function buildEnrollmentSynopsis(
+  swimmers: Swimmer[],
+  quotePricing: ReturnType<typeof calculatePricing>,
+  familyLocationsArray: string[],
+  familySelectedLocationDays: string[],
+  familyScheduleNote: string,
+  referral: { source: string; friendName: string; other: string }
+): string {
+  const parts: string[] = [];
+  parts.push(`Quote: ${swimmers.length} swimmer(s) | Tuition: $${quotePricing.totalTuition.toFixed(2)}/mo | Due Today: $${quotePricing.firstMonthTotal.toFixed(2)}`);
+  
+  swimmers.forEach((s, idx) => {
+    const level = startingLevel(s) || (s.ageGroup === "dolphin" ? "Dolphin" : "TBD");
+    const pace = s.ageGroup === "dolphin"
+      ? (s.pace === "dolphin_private" ? "Private" : "Semi-Private")
+      : (s.pace === "unlimited" ? "Unlimited" : (s.pace === "standard" ? "2x/wk" : "1x/wk"));
+    parts.push(`S${idx + 1}: ${s.firstName || "Swimmer"} (${level}, ${pace})`);
+  });
+
+  if (familyLocationsArray.length > 0) {
+    const locNames = familyLocationsArray.map(id => LOCATIONS.find(l => l.id === id)?.name.replace("British Swim School at ", "") || id).join(", ");
+    parts.push(`Locs: ${locNames}`);
+  }
+  if (familySelectedLocationDays.length > 0) {
+    const daysOnly = Array.from(new Set(familySelectedLocationDays.map(d => d.split(":")[1] || d))).join(", ");
+    parts.push(`Days: ${daysOnly}`);
+  }
+  if (familyScheduleNote) {
+    parts.push(`Notes: ${familyScheduleNote}`);
+  }
+  if (referral.source) {
+    const ref = [referral.source, referral.friendName].filter(Boolean).join(": ");
+    parts.push(`Ref: ${ref}`);
+  }
+  return parts.join(" | ");
+}
+
+function getPreciseRegisterUrl(
+  cls: JackrabbitClass,
+  level: string,
+  locCode: string,
+  family?: { firstName: string; lastName: string; email: string; phone: string; smsConsent: boolean },
+  referral?: { source: string; friendName: string; other: string },
+  primarySwimmerName?: string,
+  allSwimmers?: Swimmer[],
+  comments?: string
+): string {
+  const finalLoc = (locCode === "LAFGP" || locCode === "gp") ? "LAFGP" : ((locCode === "LAFLITT" || locCode === "arl") ? "LAFLITT" : "MAN24H");
+  
+  const baseUrl = "https://app.jackrabbitclass.com/reg.asp";
+  const params = new URLSearchParams();
+  params.set("id", "553758");
+  if (cls.id && String(cls.id).length > 4) {
+    params.set("preLoadClassID", String(cls.id));
+  }
+  params.set("loc", finalLoc);
+
+  if (family) {
+    if (family.firstName) params.set("MFName", family.firstName.trim());
+    if (family.lastName) params.set("MLName", family.lastName.trim());
+    if (family.email) {
+      params.set("MEmail", family.email.trim());
+      params.set("ConfirmMEmail", family.email.trim());
+    }
+    if (family.phone) params.set("MCPhone", family.phone.trim());
+    params.set("MCSmsOptIn", family.smsConsent ? "Y" : "N");
+  }
+
+  if (referral && referral.source) {
+    params.set("FamSource", referral.source);
+    const refDetail = [referral.friendName, referral.other].filter(Boolean).join(" - ");
+    if (refDetail) params.set("ReferralName", refDetail);
+  }
+
+  if (comments) {
+    params.set("Comments", comments.slice(0, 450));
+  }
+
+  if (allSwimmers && allSwimmers.length > 0) {
+    // Sort so the swimmer associated with this class is Swimmer 1 (S1)
+    const targetSwimmer = allSwimmers.find(s => s.firstName === primarySwimmerName) || allSwimmers[0];
+    const otherSwimmers = allSwimmers.filter(s => s !== targetSwimmer);
+    const orderedSwimmers = [targetSwimmer, ...otherSwimmers];
+
+    orderedSwimmers.forEach((swimmer, idx) => {
+      const prefix = `S${idx + 1}`;
+      if (swimmer.firstName) params.set(`${prefix}FName`, swimmer.firstName.trim());
+      if (family?.lastName) params.set(`${prefix}LName`, family.lastName.trim());
+      if (swimmer.gender) {
+        const g = swimmer.gender.trim();
+        params.set(`${prefix}Gender`, g.toLowerCase().startsWith("f") ? "Female" : (g.toLowerCase().startsWith("m") ? "Male" : g));
+      }
+      if (swimmer.dob) {
+        params.set(`${prefix}BDate`, swimmer.dob.trim());
+      }
+      if (swimmer.adaptive === "yes") {
+        params.set(`${prefix}SpecNeeds`, "Y");
+      }
+    });
+  }
+
+  return `${baseUrl}?${params.toString()}`;
 }
 
 export default function HoldForm() {
-  const [leadId] = useState(() => "lead_" + Math.random().toString(36).substring(2, 15) + "_" + Date.now());
+  const [leadId] = useState(() => {
+    if (typeof window !== "undefined") {
+      const stored = sessionStorage.getItem("bss_hold_lead_id");
+      if (stored) return stored;
+      const newId = "lead_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
+      sessionStorage.setItem("bss_hold_lead_id", newId);
+      return newId;
+    }
+    return "lead_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
+  });
   const [step, setStep] = useState(1);
   const [openings, setOpenings] = useState<JackrabbitClass[]>([]);
   const [loadingOpenings, setLoadingOpenings] = useState(false);
@@ -443,13 +979,14 @@ export default function HoldForm() {
             adaptive: group.id === "dolphin" ? "yes" : "",
             firstProgram: "",
             comfortable: "",
+            separateCaregiver: "",
+            waitTurn: "",
             floatUnassisted: "",
             jumpRollFloat: "",
-            glideRecover: "",
-            swimTenYards: "",
-            armsOut: "",
+            swimFreestyleBackstroke: "",
+            faceInWater: "",
+            swimTenYardsSideBreath: "",
             treadMinute: "",
-            fourStrokes: "",
             location: "",
             preferredSchedule: "",
             pace: group.id === "dolphin" ? "dolphin_semi" : "foundation"
@@ -463,7 +1000,7 @@ export default function HoldForm() {
   };
 
   const [activeSwimmer, setActiveSwimmer] = useState(0);
-  const [family, setFamily] = useState({ firstName: "", lastName: "", email: "", phone: "", smsConsent: false });
+  const [family, setFamily] = useState({ firstName: "", lastName: "", email: "", phone: "", smsConsent: true });
   const [referral, setReferral] = useState({ source: "", friendName: "", other: "" });
   const [handedOff, setHandedOff] = useState(false);
   const [composed, setComposed] = useState("");
@@ -477,24 +1014,14 @@ export default function HoldForm() {
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       setTimeout(() => setOnMobile(isMobile), 0);
     }
+    fetch("/api/openings")
+      .then((res) => res.json())
+      .then((data) => {
+        const classes = Array.isArray(data) ? data : (data.rows || data.classes || []);
+        if (classes.length > 0) setOpenings(classes);
+      })
+      .catch((err) => console.error("Error preloading openings:", err));
   }, []);
-
-  useEffect(() => {
-    if (step > 1) {
-      document.documentElement.classList.add("wizard-active-steps");
-    } else {
-      document.documentElement.classList.remove("wizard-active-steps");
-    }
-    if (step === 1) {
-      document.documentElement.classList.add("quote-active-step");
-    } else {
-      document.documentElement.classList.remove("quote-active-step");
-    }
-    return () => {
-      document.documentElement.classList.remove("wizard-active-steps");
-      document.documentElement.classList.remove("quote-active-step");
-    };
-  }, [step]);
 
   const handleDobBlur = (swimmerId: string, rawValue: string) => {
     const formatted = smartFormatDob(rawValue);
@@ -524,20 +1051,30 @@ export default function HoldForm() {
       leadId,
       submittedAt: new Date().toISOString(),
       message: text,
+      quotedFirstMonthTotal: quotePricing.firstMonthTotal,
+      quotedOngoingTuition: quotePricing.totalTuition,
+      quotedRegistrationFee: quotePricing.totalRegistrationFees,
+      swimmerCount: swimmers.length,
       family,
       referral,
-      swimmers: swimmers.map((swimmer) => ({
-        firstName: swimmer.firstName || "Swimmer",
-        dob: swimmer.dob,
-        gender: swimmer.gender,
-        ageGroup: swimmer.ageGroup,
-        estimatedLevel: startingLevel(swimmer),
-        placementMode: swimmer.placementMode,
-        selectedLevel: swimmer.selectedLevel,
-        location: swimmer.location,
-        preferredSchedule: swimmer.preferredSchedule,
-        pace: swimmer.pace
-      })),
+      swimmers: swimmers.map((swimmer) => {
+        const paceLabel = swimmer.ageGroup === "dolphin"
+          ? (swimmer.pace === "dolphin_private" ? "Private (1x/wk)" : "Semi-Private (1x/wk)")
+          : (swimmer.pace === "unlimited" ? "Unlimited Swim" : (swimmer.pace === "standard" ? "2x per week" : "1x per week"));
+        return {
+          firstName: swimmer.firstName || "Swimmer",
+          dob: swimmer.dob,
+          gender: swimmer.gender,
+          ageGroup: swimmer.ageGroup,
+          estimatedLevel: startingLevel(swimmer),
+          placementMode: swimmer.placementMode,
+          selectedLevel: swimmer.selectedLevel,
+          location: swimmer.location,
+          preferredSchedule: swimmer.preferredSchedule,
+          pace: swimmer.pace,
+          paceLabel
+        };
+      }),
       quote: quotePricing
     });
 
@@ -553,104 +1090,182 @@ export default function HoldForm() {
     setSwimmers(swimmers.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
 
-  function startingLevel(swimmer: Swimmer): string {
-    if (swimmer.placementMode === "known" && swimmer.selectedLevel) {
-      return swimmer.selectedLevel;
+  function handleQuestionAnswer(swimmerId: string, key: keyof Swimmer, answer: Answer) {
+    const swimmer = swimmers.find(s => s.id === swimmerId);
+    if (!swimmer) return;
+
+    const patch: Partial<Swimmer> = { [key]: answer, placementMode: "assessment" };
+
+    if (key === "adaptive") {
+      patch.firstProgram = "";
+      patch.comfortable = "";
+      patch.separateCaregiver = "";
+      patch.waitTurn = "";
+      patch.floatUnassisted = "";
+      patch.jumpRollFloat = "";
+      patch.swimFreestyleBackstroke = "";
+      patch.faceInWater = "";
+      patch.swimTenYardsSideBreath = "";
+      patch.treadMinute = "";
+    } else if (key === "firstProgram") {
+      patch.comfortable = "";
+      patch.separateCaregiver = "";
+      patch.waitTurn = "";
+      patch.floatUnassisted = "";
+      patch.jumpRollFloat = "";
+      patch.swimFreestyleBackstroke = "";
+      patch.faceInWater = "";
+      patch.swimTenYardsSideBreath = "";
+      patch.treadMinute = "";
+    } else if (key === "comfortable") {
+      patch.separateCaregiver = "";
+      patch.waitTurn = "";
+      patch.floatUnassisted = "";
+      patch.jumpRollFloat = "";
+      patch.swimFreestyleBackstroke = "";
+      patch.faceInWater = "";
+      patch.swimTenYardsSideBreath = "";
+      patch.treadMinute = "";
+    } else if (key === "separateCaregiver") {
+      patch.waitTurn = "";
+    } else if (key === "floatUnassisted") {
+      patch.jumpRollFloat = "";
+      patch.swimFreestyleBackstroke = "";
+      patch.treadMinute = "";
+    } else if (key === "faceInWater") {
+      patch.swimTenYardsSideBreath = "";
+    } else if (key === "jumpRollFloat") {
+      patch.swimFreestyleBackstroke = "";
+    } else if (key === "treadMinute") {
+      patch.swimFreestyleBackstroke = "";
     }
-    if (swimmer.adaptive === "yes" || swimmer.ageGroup === "dolphin") return "Dolphin";
-    if (swimmer.ageGroup === "under3") {
-      if (swimmer.firstProgram === "yes") return "Tadpole";
-      if (swimmer.comfortable === "no") return "Tadpole";
-      if (swimmer.floatUnassisted === "no") return "Swimboree";
-      return "Seahorse";
+
+    updateSwimmer(swimmerId, patch);
+  }
+
+  function resetSwimmerQuestions(swimmerId: string) {
+    updateSwimmer(swimmerId, {
+      adaptive: "",
+      firstProgram: "",
+      comfortable: "",
+      separateCaregiver: "",
+      waitTurn: "",
+      floatUnassisted: "",
+      jumpRollFloat: "",
+      swimFreestyleBackstroke: "",
+      faceInWater: "",
+      swimTenYardsSideBreath: "",
+      treadMinute: "",
+      selectedLevel: "",
+      placementMode: "assessment"
+    });
+  }
+
+  const [familySelectedLocationDays, setFamilySelectedLocationDays] = useState<string[]>([]);
+  const [familyLocationsArray, setFamilyLocationsArray] = useState<string[]>([]);
+  const [familyScheduleNote, setFamilyScheduleNote] = useState("");
+
+  function syncSwimmerPreferences(locs: string[], locDays: string[], note: string) {
+    const locStr = locs.join(",");
+    const displayDaysSummary = locDays.map(item => {
+      const [locId, day] = item.split(":");
+      const locName = LOCATIONS.find(l => l.id === locId)?.name || locId;
+      return `${locName} ${day}`;
+    }).join(", ");
+
+    const scheduleStr = [displayDaysSummary, note.trim()].filter(Boolean).join(" · ");
+
+    setSwimmers(prev => prev.map(s => ({
+      ...s,
+      location: locStr,
+      preferredSchedule: scheduleStr
+    })));
+  }
+
+  function toggleFamilyLocation(locId: string) {
+    let nextLocs: string[];
+    let nextLocDays = [...familySelectedLocationDays];
+
+    if (familyLocationsArray.includes(locId)) {
+      nextLocs = familyLocationsArray.filter(id => id !== locId);
+      nextLocDays = nextLocDays.filter(item => !item.startsWith(locId + ":"));
+    } else {
+      nextLocs = [...familyLocationsArray, locId];
     }
-    if (swimmer.ageGroup === "adult") {
-      if (swimmer.comfortable === "no") return "Adult 1";
-      if (swimmer.floatUnassisted === "no") return "Adult 1";
-      if (swimmer.glideRecover === "no") return "Adult 2";
-      return "Adult 3";
+
+    setFamilyLocationsArray(nextLocs);
+    setFamilySelectedLocationDays(nextLocDays);
+    syncSwimmerPreferences(nextLocs, nextLocDays, familyScheduleNote);
+  }
+
+  function toggleFamilyLocationDay(locId: string, day: string) {
+    const key = `${locId}:${day}`;
+    let nextLocDays: string[];
+    let nextLocs = [...familyLocationsArray];
+
+    if (!nextLocs.includes(locId)) {
+      nextLocs.push(locId);
     }
-    if (swimmer.ageGroup === "youngAdult") {
-      if (swimmer.comfortable === "no") return "Young Adult 1";
-      if (swimmer.floatUnassisted === "no") return "Young Adult 1";
-      if (swimmer.glideRecover === "no") return "Young Adult 2";
-      return "Young Adult 3";
+
+    if (familySelectedLocationDays.includes(key)) {
+      nextLocDays = familySelectedLocationDays.filter(k => k !== key);
+    } else {
+      nextLocDays = [...familySelectedLocationDays, key];
     }
-    if (swimmer.comfortable === "no") return "Starfish";
-    if (swimmer.floatUnassisted === "no") return "Starfish";
-    if (swimmer.jumpRollFloat === "no") return "Minnow";
-    if (swimmer.glideRecover === "no") return "Turtle 1";
-    if (swimmer.swimTenYards === "no") return "Turtle 2";
-    if (swimmer.armsOut === "no") return "Shark 1";
-    if (swimmer.treadMinute === "no") return "Shark 2";
-    return "Barracuda";
+
+    setFamilyLocationsArray(nextLocs);
+    setFamilySelectedLocationDays(nextLocDays);
+    syncSwimmerPreferences(nextLocs, nextLocDays, familyScheduleNote);
+  }
+
+  function isLocDaySelected(locId: string, day: string) {
+    return familySelectedLocationDays.includes(`${locId}:${day}`);
+  }
+
+  function handleScheduleNoteChange(note: string) {
+    setFamilyScheduleNote(note);
+    syncSwimmerPreferences(familyLocationsArray, familySelectedLocationDays, note);
   }
 
   const profileValid = swimmers.every(
     (swimmer) => swimmer.firstName.trim() && swimmer.dob && validDob(swimmer.dob) && swimmer.gender
   );
 
-  const levelsValid = swimmers.every((swimmer) => {
-    if (swimmer.ageGroup === "dolphin") return true;
-    if (swimmer.placementMode === "known") return !!swimmer.selectedLevel;
-    if (swimmer.placementMode === "assessment") {
-      if (swimmer.adaptive === "yes") return true;
-      if (swimmer.adaptive === "no") {
-        if (swimmer.firstProgram === "") return false;
-        if (swimmer.firstProgram === "yes") return true;
-        if (swimmer.comfortable === "") return false;
-        if (swimmer.comfortable === "no") return true;
-        if (swimmer.floatUnassisted === "") return false;
-        if (swimmer.floatUnassisted === "no") return true;
-        if (swimmer.ageGroup === "under3") return true;
-        if (swimmer.glideRecover === "") return false;
-        if (swimmer.glideRecover === "no") return true;
-        if (swimmer.ageGroup === "adult" || swimmer.ageGroup === "youngAdult") return true;
-        if (swimmer.jumpRollFloat === "") return false;
-        if (swimmer.jumpRollFloat === "no") return true;
-        if (swimmer.swimTenYards === "") return false;
-        if (swimmer.swimTenYards === "no") return true;
-        if (swimmer.armsOut === "") return false;
-        if (swimmer.armsOut === "no") return true;
-        if (swimmer.treadMinute === "") return false;
-        if (swimmer.treadMinute === "no") return true;
-        return swimmer.fourStrokes !== "";
-      }
-    }
-    return false;
-  });
+  const levelsValid = swimmers.every(isPlacementComplete);
 
   const classValid = swimmers.every((swimmer) => swimmer.location);
 
   function goToContact() {
     setStep(2);
-    logLead("Step 1 Completed: Instant Family Quote Generated");
+    logLead("Step 1: View Lesson Times Clicked (Quote Generated)");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function goToLevels() {
-    setShowValidationErrors(true);
-    
-    const errors = [];
-    if (!family.firstName.trim()) errors.push("Parent First Name");
-    if (!family.lastName.trim()) errors.push("Parent Last Name");
-    if (!/\S+@\S+\.\S+/.test(family.email)) errors.push("Parent Email");
-    if (family.phone.replace(/\D/g, "").length < 10) errors.push("Parent Mobile Phone (10 digits)");
-    if (!family.smsConsent) errors.push("SMS Text Consent");
+    if (ENFORCE_REQUIRED_FIELDS) {
+      setShowValidationErrors(true);
+      
+      const errors = [];
+      if (!family.firstName.trim()) errors.push("Parent First Name");
+      if (!family.lastName.trim()) errors.push("Parent Last Name");
+      if (!/\S+@\S+\.\S+/.test(family.email)) errors.push("Parent Email");
+      if (family.phone.replace(/\D/g, "").length < 10) errors.push("Parent Mobile Phone (10 digits)");
+      if (!family.smsConsent) errors.push("SMS Text Consent");
 
-    swimmers.forEach((swimmer, index) => {
-      const name = swimmer.firstName.trim() || ("Swimmer " + (index + 1));
-      if (!swimmer.firstName.trim()) errors.push(name + "'s First Name");
-      if (!swimmer.dob) {
-        errors.push(name + "'s Date of Birth");
-      } else if (!validDob(swimmer.dob)) {
-        errors.push(name + "'s Date of Birth (must be valid MM/DD/YYYY)");
+      swimmers.forEach((swimmer, index) => {
+        const name = swimmer.firstName.trim() || ("Swimmer " + (index + 1));
+        if (!swimmer.firstName.trim()) errors.push(name + "'s First Name");
+        if (!swimmer.dob) {
+          errors.push(name + "'s Date of Birth");
+        } else if (!validDob(swimmer.dob)) {
+          errors.push(name + "'s Date of Birth (must be valid MM/DD/YYYY)");
+        }
+        if (!swimmer.gender) errors.push(name + "'s Gender");
+      });
+
+      if (errors.length > 0) {
+        return setMessage("Please correct the following fields: " + errors.join(", ") + ".");
       }
-      if (!swimmer.gender) errors.push(name + "'s Gender");
-    });
-
-    if (errors.length > 0) {
-      return setMessage("Please correct the following fields: " + errors.join(", ") + ".");
     }
 
     setMessage("");
@@ -661,7 +1276,9 @@ export default function HoldForm() {
   }
 
   function goToPools() {
-    if (!levelsValid) return setMessage("Please complete the starting level questions for all swimmers.");
+    if (ENFORCE_REQUIRED_FIELDS && !levelsValid) {
+      return setMessage("Please complete the starting level questions for all swimmers.");
+    }
     setMessage("");
     setStep(4);
     logLead("Step 3 Completed: Placement Levels Selected");
@@ -669,7 +1286,9 @@ export default function HoldForm() {
   }
 
   function goToReview() {
-    if (!classValid) return setMessage("Choose a preferred pool for each swimmer.");
+    if (ENFORCE_REQUIRED_FIELDS && !classValid) {
+      return setMessage("Choose a preferred pool for each swimmer.");
+    }
     setMessage("");
     setStep(5);
     logLead("Step 4 Completed: Pool & Schedule Preferences Selected");
@@ -679,7 +1298,7 @@ export default function HoldForm() {
     fetch("/api/openings")
       .then((res) => res.json())
       .then((data) => {
-        const classes = Array.isArray(data) ? data : (data.classes || []);
+        const classes = Array.isArray(data) ? data : (data.rows || data.classes || []);
         setOpenings(classes);
         setLoadingOpenings(false);
       })
@@ -712,29 +1331,33 @@ export default function HoldForm() {
       sun: "Sunday"
     };
 
-    const swimmersWithFilteredClasses = swimmers.map(swimmer => {
+    const swimmersWithFilteredClasses = swimmers.map((swimmer, idx) => {
       const swimmerLevel = startingLevel(swimmer);
       const locationsArray = swimmer.location ? swimmer.location.split(",").filter(Boolean) : [];
       
       const matchedClasses = openings.filter(c => {
         const levelMatch = matchClassLevel(c, swimmerLevel);
-        const locMatch = matchLocation(c.location_code, locationsArray);
-        const dayMatch = matchDays(c, swimmer.preferredSchedule);
+        const dayLocMatch = matchDaysAndLocation(c, locationsArray, familySelectedLocationDays);
         
         const name = (c.name || "").toLowerCase();
-        const isStaffShift = name.includes("manager on duty") || name.includes("staff meeting") || name.includes("convenience fee");
+        const room = (c.room || "").toLowerCase();
+        const isPlaceholder = room.includes("future") || room.includes("hold") || room.includes("run") || name.includes("future") || name.includes("available for any lesson") || name.includes("manager on duty") || name.includes("staff meeting") || name.includes("convenience fee");
+        const hasOpenings = getOpeningsCount(c) >= 1;
         
-        return levelMatch && locMatch && dayMatch && !isStaffShift;
+        return levelMatch && dayLocMatch && !isPlaceholder && hasOpenings;
       });
 
       return {
         swimmer,
+        defaultName: swimmer.firstName ? swimmer.firstName.trim() : ("Swimmer " + (idx + 1)),
         matchedClasses
       };
     });
 
+    const dayWeight = { "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6, "Sunday": 7 };
+
     if (swimmers.length === 1) {
-      const { swimmer, matchedClasses } = swimmersWithFilteredClasses[0];
+      const { swimmer, defaultName, matchedClasses } = swimmersWithFilteredClasses[0];
       matchedClasses.forEach(c => {
         const days = Object.keys(c.meeting_days).filter(k => c.meeting_days[k as keyof typeof c.meeting_days]);
         days.forEach(d => {
@@ -743,12 +1366,19 @@ export default function HoldForm() {
             day: dayLabels[d] || d,
             timeLabel: formatTime12h(c.start_time),
             locationName: c.location_name || c.location || "",
-            classes: [{ swimmerName: swimmer.firstName, level: startingLevel(swimmer), classObj: c }],
+            classes: [{ swimmerName: defaultName, level: startingLevel(swimmer), classObj: c }],
             score: 10
           });
         });
       });
-      return matches.slice(0, 15);
+      return matches.sort((a, b) => {
+        const dayA = dayWeight[a.day as keyof typeof dayWeight] || 0;
+        const dayB = dayWeight[b.day as keyof typeof dayWeight] || 0;
+        if (dayA !== dayB) return dayA - dayB;
+        const timeA = parseTimeToMinutes(a.classes[0].classObj.start_time);
+        const timeB = parseTimeToMinutes(b.classes[0].classObj.start_time);
+        return timeA - timeB;
+      }).slice(0, 20);
     }
 
     const locCodes = ["LAFLITT", "LAFGP", "MAN24H"];
@@ -759,6 +1389,7 @@ export default function HoldForm() {
         const swimmerClassesAtSlot = swimmersWithFilteredClasses.map(s => {
           return {
             swimmer: s.swimmer,
+            defaultName: s.defaultName,
             classes: s.matchedClasses.filter(c => c.location_code === locCode && c.meeting_days[dayKey as keyof typeof c.meeting_days])
           };
         });
@@ -769,6 +1400,11 @@ export default function HoldForm() {
 
           s1.classes.forEach(c1 => {
             s2.classes.forEach(c2 => {
+              // If both swimmers are placed into the exact same class, ensure there are at least 2 openings!
+              if (c1.id === c2.id && getOpeningsCount(c1) < 2) {
+                return;
+              }
+
               const t1 = parseTimeToMinutes(c1.start_time);
               const t2 = parseTimeToMinutes(c2.start_time);
               
@@ -779,8 +1415,8 @@ export default function HoldForm() {
                   timeLabel: formatTime12h(c1.start_time),
                   locationName: locName,
                   classes: [
-                    { swimmerName: s1.swimmer.firstName, level: startingLevel(s1.swimmer), classObj: c1 },
-                    { swimmerName: s2.swimmer.firstName, level: startingLevel(s2.swimmer), classObj: c2 }
+                    { swimmerName: s1.defaultName, level: startingLevel(s1.swimmer), classObj: c1 },
+                    { swimmerName: s2.defaultName, level: startingLevel(s2.swimmer), classObj: c2 }
                   ],
                   score: 100
                 });
@@ -788,61 +1424,87 @@ export default function HoldForm() {
                 matches.push({
                   type: "back-to-back",
                   day: dayLabels[dayKey],
-                  timeLabel: formatTime12h(c1.start_time) + " & " + formatTime12h(c2.start_time),
+                  timeLabel: (t1 <= t2 ? formatTime12h(c1.start_time) + " & " + formatTime12h(c2.start_time) : formatTime12h(c2.start_time) + " & " + formatTime12h(c1.start_time)),
                   locationName: locName,
-                  classes: [
-                    { swimmerName: s1.swimmer.firstName, level: startingLevel(s1.swimmer), classObj: c1 },
-                    { swimmerName: s2.swimmer.firstName, level: startingLevel(s2.swimmer), classObj: c2 }
+                  classes: t1 <= t2 ? [
+                    { swimmerName: s1.defaultName, level: startingLevel(s1.swimmer), classObj: c1 },
+                    { swimmerName: s2.defaultName, level: startingLevel(s2.swimmer), classObj: c2 }
+                  ] : [
+                    { swimmerName: s2.defaultName, level: startingLevel(s2.swimmer), classObj: c2 },
+                    { swimmerName: s1.defaultName, level: startingLevel(s1.swimmer), classObj: c1 }
                   ],
                   score: 50
                 });
               }
             });
           });
-        } else {
-          const hasOpeningsForAll = swimmerClassesAtSlot.every(s => s.classes.length > 0);
-          if (hasOpeningsForAll) {
-            const combined = swimmerClassesAtSlot.map(s => ({
-              swimmerName: s.swimmer.firstName,
-              level: startingLevel(s.swimmer),
-              classObj: s.classes[0]
-            }));
-            matches.push({
-              type: "same-day",
-              day: dayLabels[dayKey],
-              timeLabel: swimmerClassesAtSlot.map(s => formatTime12h(s.classes[0].start_time)).join(", "),
-              locationName: locName,
-              classes: combined,
-              score: 30
-            });
-          }
         }
       });
     });
 
-    const dayWeight = { "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6, "Sunday": 7 };
-    return matches.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
+    // Slot-level deduplication: guarantees at most ONE match card per unique Location + Day + Time + Type
+    const slotMap = new Map<string, CoordinatedMatch>();
+
+    matches.forEach(m => {
+      const slotKey = `${m.locationName}|${m.day}|${m.timeLabel}|${m.type}`;
+      const totalOpenings = m.classes.reduce((sum, c) => sum + getOpeningsCount(c.classObj), 0);
+      const existing = slotMap.get(slotKey);
+      
+      if (!existing) {
+        slotMap.set(slotKey, m);
+      } else {
+        const existingOpenings = existing.classes.reduce((sum, c) => sum + getOpeningsCount(c.classObj), 0);
+        if (totalOpenings > existingOpenings) {
+          slotMap.set(slotKey, m);
+        }
+      }
+    });
+
+    const uniqueMatches = Array.from(slotMap.values());
+
+    return uniqueMatches.sort((a, b) => {
       const dayA = dayWeight[a.day as keyof typeof dayWeight] || 0;
       const dayB = dayWeight[b.day as keyof typeof dayWeight] || 0;
       if (dayA !== dayB) return dayA - dayB;
+
+      const getMinTime = (m: CoordinatedMatch) => {
+        const times = m.classes.map(c => parseTimeToMinutes(c.classObj.start_time));
+        return Math.min(...times);
+      };
+      const timeA = getMinTime(a);
+      const timeB = getMinTime(b);
+      if (timeA !== timeB) return timeA - timeB;
+
+      if (b.score !== a.score) return b.score - a.score;
       return a.timeLabel.localeCompare(b.timeLabel);
-    }).slice(0, 15);
-  }, [swimmers, openings]);
+    }).slice(0, 20);
+  }, [swimmers, openings, familySelectedLocationDays]);
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!profileValid || !levelsValid || !classValid) return;
+    if (ENFORCE_REQUIRED_FIELDS && (!profileValid || !levelsValid || !classValid)) return;
     
-    let text = "Requesting Class Times for " + family.firstName + " " + family.lastName + " (" + family.phone + ").\nSwimmers:\n";
+    let text = "Scheduling Assistance Request for " + (family.firstName || "Parent") + " " + family.lastName + " (" + (family.phone || "No phone provided") + ").\n\n";
+    text += "=== INSTANT QUOTE SUMMARY ===\n";
+    text += "• Quoted Ongoing Monthly Tuition: $" + quotePricing.totalTuition.toFixed(2) + "/mo\n";
+    text += "• Quoted Total Due Today: $" + quotePricing.firstMonthTotal.toFixed(2) + " (includes $" + quotePricing.totalRegistrationFees.toFixed(2) + " annual registration fee)\n\n";
+    text += "=== SWIMMERS & PREFERRED LESSONS ===\n";
     swimmers.forEach((s) => {
-      text += "- " + s.firstName + " (" + s.dob + ", " + s.gender + "): Level " + startingLevel(s) + " at " + s.location.split(",").map(id => LOCATIONS.find(l => l.id === id)?.name).filter(Boolean).join(", ") + " (" + (s.preferredSchedule || "Any day") + ")\n";
+      const paceLabel = s.ageGroup === "dolphin"
+        ? (s.pace === "dolphin_private" ? "Private (1x/wk)" : "Semi-Private (1x/wk)")
+        : (s.pace === "unlimited" ? "Unlimited Swim" : (s.pace === "standard" ? "2x per week" : "1x per week"));
+      text += "• " + (s.firstName || "Swimmer") + " (" + (s.dob || "Age N/A") + ", " + (s.gender || "N/A") + "):\n";
+      text += "  - Assessed Level: " + startingLevel(s) + "\n";
+      text += "  - Preferred Frequency: " + paceLabel + "\n";
+      text += "  - Location(s): " + (s.location ? s.location.split(",").map(id => LOCATIONS.find(l => l.id === id)?.name.replace("British Swim School at ", "")).filter(Boolean).join(", ") : "Any Location") + "\n";
+      text += "  - Days / Note: " + (s.preferredSchedule || "Any day") + "\n";
     });
-    text += "\nHeard from: " + referral.source;
+    text += "\nReferral Source: " + (referral.source || "Website") + (referral.friendName ? " (Referred by: " + referral.friendName + ")" : "");
     
     setComposed(text);
     setHandedOff(true);
-    logLead("Step 5 Completed: Final Submission Logged");
+    logLead("Step 5 Completed: Scheduling Assistance Requested");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function copyToClipboard() {
@@ -855,17 +1517,23 @@ export default function HoldForm() {
   return (
     <div className="hold-form">
       <div className="wizard-progress" aria-label={"Step " + step + " of 5"}>
-        {["Instant Quote", "Profiles & Contact", "Placement Levels", "Pools & Days", "Review"].map((label, index) => (
-          <span key={label} className={step === index + 1 ? "current" : step > index + 1 ? "complete" : ""}>
-            <b>{step > index + 1 ? "✓" : index + 1}</b>
-            <small>{label}</small>
-          </span>
+        {[
+          { num: 1, label: "Instant Quote" },
+          { num: 2, label: "Profiles" },
+          { num: 3, label: "Levels" },
+          { num: 4, label: "Schedule" },
+          { num: 5, label: "Review" }
+        ].map((s, index) => (
+          <div key={s.label} className={"progress-step " + (step === index + 1 ? "current" : step > index + 1 ? "complete" : "")}>
+            <span className="step-badge">{step > index + 1 ? "✓" : s.num}</span>
+            <span className="step-label">{s.label}</span>
+          </div>
         ))}
       </div>
 
       {step === 1 && (
-        <div className="quote-calculator-container" style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '28px', alignItems: 'start' }}>
-          <div className="quote-left-panel" style={{ background: '#fff', border: '1px solid #dce3ef', borderRadius: '20px', padding: '24px' }}>
+        <div className="quote-calculator-container">
+          <div className="quote-left-panel">
             <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--navy)', marginBottom: '4px' }}>Build Your Tuition Quote</h2>
             <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '24px' }}>Adjust swimmers, ages, and weekly class frequencies to instantly estimate your flat monthly subscription.</p>
             
@@ -896,49 +1564,55 @@ export default function HoldForm() {
               ))}
             </div>
 
-            <div style={{ marginTop: '28px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '800', color: 'var(--navy)', marginBottom: '16px' }}>Lesson Frequency (Pace)</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ marginTop: '26px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: '850', color: 'var(--navy)', marginBottom: '14px' }}>
+                How many swim lessons per week?
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {swimmers.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '32px 20px', color: 'var(--muted)', background: '#fafbfe', borderRadius: '16px', border: '1px dashed #dce3ef', fontSize: '12px' }}>
-                    Use the buttons above to select your swimmers and build your tuition quote.
+                  <div style={{ textAlign: 'center', padding: '28px 20px', color: 'var(--muted)', background: '#fafbfe', borderRadius: '16px', border: '1px dashed #dce3ef', fontSize: '12px' }}>
+                    Select your swimmers above to choose lesson frequency.
                   </div>
                 ) : swimmers.map((swimmer, idx) => {
-                  const pricingItem = quotePricing.items.find(item => item.swimmerId === swimmer.id);
-                  const isPrimary = pricingItem?.isPrimary;
+                  const label = swimmers.length > 1 
+                    ? `Swimmer ${idx + 1} (${AGE_GROUPS.find(g => g.id === swimmer.ageGroup)?.label})` 
+                    : AGE_GROUPS.find(g => g.id === swimmer.ageGroup)?.label;
 
                   return (
-                    <div key={swimmer.id} style={{ border: '1px solid #eef2ff', borderRadius: '16px', padding: '20px', background: '#fafbfe' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                        <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--navy)' }}>{AGE_GROUPS.find(g => g.id === swimmer.ageGroup)?.label || ("Swimmer " + (idx + 1))}</span>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <span style={{ fontSize: '9px', fontWeight: '800', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            {AGE_GROUPS.find(g => g.id === swimmer.ageGroup)?.label}
-                          </span>
-                          {isPrimary && (
-                            <span style={{ background: 'var(--navy)', color: '#fff', fontSize: '8px', fontWeight: '800', padding: '2px 8px', borderRadius: '99px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Primary</span>
-                          )}
-                        </div>
-                      </div>
+                    <div
+                      key={swimmer.id}
+                      style={{
+                        border: '1.5px solid #e2e8f0',
+                        borderRadius: '14px',
+                        padding: '14px 16px',
+                        background: '#f8fafc',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px'
+                      }}
+                    >
+                      <strong style={{ fontSize: '14px', fontWeight: '800', color: 'var(--navy)' }}>
+                        {label}
+                      </strong>
 
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: swimmer.ageGroup === "dolphin" ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '8px' }}>
                         {swimmer.ageGroup === "dolphin" ? (
                           <>
                             <button
                               type="button"
-                              onClick={() => updateSwimmer(swimmer.id, { pace: "dolphin_private" })}
-                              className={"pace-btn " + (swimmer.pace === "dolphin_private" ? "selected" : "")}
-                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "dolphin_private" ? 'var(--navy)' : '#fff', color: swimmer.pace === "dolphin_private" ? '#fff' : 'var(--navy)' }}
+                              onClick={() => updateSwimmer(swimmer.id, { pace: "dolphin_semi" })}
+                              className={"select-pill-btn " + (swimmer.pace === "dolphin_semi" ? "selected" : "")}
+                              style={{ padding: '10px 8px', fontSize: '11px' }}
                             >
-                              Private
+                              Semi-Private (1x/wk)
                             </button>
                             <button
                               type="button"
-                              onClick={() => updateSwimmer(swimmer.id, { pace: "dolphin_semi" })}
-                              className={"pace-btn " + (swimmer.pace === "dolphin_semi" ? "selected" : "")}
-                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', cursor: 'pointer', background: swimmer.pace === "dolphin_semi" ? 'var(--navy)' : '#fff', color: swimmer.pace === "dolphin_semi" ? '#fff' : 'var(--navy)' }}
+                              onClick={() => updateSwimmer(swimmer.id, { pace: "dolphin_private" })}
+                              className={"select-pill-btn " + (swimmer.pace === "dolphin_private" ? "selected" : "")}
+                              style={{ padding: '10px 8px', fontSize: '11px' }}
                             >
-                              Semi-Private
+                              Private (1x/wk)
                             </button>
                           </>
                         ) : (
@@ -946,21 +1620,24 @@ export default function HoldForm() {
                             <button
                               type="button"
                               onClick={() => updateSwimmer(swimmer.id, { pace: "foundation" })}
-                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '11px', fontWeight: '800', cursor: 'pointer', background: swimmer.pace === "foundation" ? 'var(--navy)' : '#fff', color: swimmer.pace === "foundation" ? '#fff' : 'var(--navy)' }}
+                              className={"select-pill-btn " + (swimmer.pace === "foundation" ? "selected" : "")}
+                              style={{ padding: '10px 8px', fontSize: '12px' }}
                             >
                               1x per week
                             </button>
                             <button
                               type="button"
                               onClick={() => updateSwimmer(swimmer.id, { pace: "standard" })}
-                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '11px', fontWeight: '800', cursor: 'pointer', background: swimmer.pace === "standard" ? 'var(--navy)' : '#fff', color: swimmer.pace === "standard" ? '#fff' : 'var(--navy)' }}
+                              className={"select-pill-btn " + (swimmer.pace === "standard" ? "selected" : "")}
+                              style={{ padding: '10px 8px', fontSize: '12px' }}
                             >
                               2x per week
                             </button>
                             <button
                               type="button"
                               onClick={() => updateSwimmer(swimmer.id, { pace: "unlimited" })}
-                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dce3ef', fontSize: '11px', fontWeight: '800', cursor: 'pointer', background: swimmer.pace === "unlimited" ? 'var(--navy)' : '#fff', color: swimmer.pace === "unlimited" ? '#fff' : 'var(--navy)' }}
+                              className={"select-pill-btn " + (swimmer.pace === "unlimited" ? "selected" : "")}
+                              style={{ padding: '10px 8px', fontSize: '12px' }}
                             >
                               Unlimited Swim
                             </button>
@@ -974,7 +1651,7 @@ export default function HoldForm() {
             </div>
           </div>
 
-          <div className="quote-right-panel" style={{ background: '#fff', border: '1px solid #dce3ef', borderRadius: '20px', padding: '24px', position: 'sticky', top: '24px' }}>
+          <div className="quote-right-panel">
             <h3 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--navy)', marginBottom: '16px' }}>Tuition & Enrollment Summary</h3>
             
             <div className="quote-table-wrapper" style={{ border: '1px solid #eef2ff', borderRadius: '12px', overflow: 'hidden', marginBottom: '24px' }}>
@@ -1010,38 +1687,88 @@ export default function HoldForm() {
                             <span style={{ color: '#c8102e', marginRight: '6px' }}>●</span> {AGE_GROUPS.find(g => g.id === item.ageGroup)?.label || ("Swimmer " + (idx + 1))} — Tuition Breakdown
                           </td>
                         </tr>
-                        <tr style={{ borderBottom: '1px solid #eef2ff' }}>
-                          <td style={{ padding: '10px 12px' }}>
-                            <strong style={{ display: 'block', color: 'var(--navy)' }}>Class 1 Tuition</strong>
-                            <span style={{ color: 'var(--muted)', fontSize: '9px' }}>{class1PaceLabel}</span>
-                          </td>
-                          <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>${item.class1Base.toFixed(2)}</td>
-                          <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                            {item.siblingDiscount > 0 ? (
-                              <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px' }}>
-                                Sibling (10%): -${(item.class1Base * 0.1).toFixed(2)}
-                              </span>
-                            ) : "-"}
-                          </td>
-                          <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.class1Final.toFixed(2)}</td>
-                        </tr>
-
-                        {(isStandard || isUnlimited || isPrivate) && (
+                        {isDolphin ? (
                           <tr style={{ borderBottom: '1px solid #eef2ff' }}>
                             <td style={{ padding: '10px 12px' }}>
-                              <strong style={{ display: 'block', color: 'var(--navy)' }}>Class 2 Tuition</strong>
-                              <span style={{ color: 'var(--muted)', fontSize: '9px' }}>{class2PaceLabel}</span>
+                              <strong style={{ display: 'block', color: 'var(--navy)' }}>
+                                {isPrivate ? "Adaptive Private Lesson (1x/wk)" : "Adaptive Semi-Private Lesson (1x/wk)"}
+                              </strong>
+                              <span style={{ color: 'var(--muted)', fontSize: '9px' }}>
+                                {isPrivate ? "1-on-1 specialized adaptive lesson" : "Small group adaptive lesson (Dolphin)"}
+                              </span>
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>${item.class2Base.toFixed(2)}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>${item.baseRate.toFixed(2)}</td>
                             <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                               {item.siblingDiscount > 0 ? (
                                 <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px' }}>
-                                  Sibling (10%): -${(item.class2Base * 0.1).toFixed(2)}
+                                  Sibling (10%): -${item.siblingDiscount.toFixed(2)}
                                 </span>
                               ) : "-"}
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.class2Final.toFixed(2)}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.finalRate.toFixed(2)}</td>
                           </tr>
+                        ) : (
+                          <>
+                            <tr style={{ borderBottom: '1px solid #eef2ff' }}>
+                              <td style={{ padding: '10px 12px' }}>
+                                <strong style={{ display: 'block', color: 'var(--navy)' }}>Class 1 Tuition</strong>
+                                <span style={{ color: 'var(--muted)', fontSize: '9px' }}>Foundation Slot</span>
+                              </td>
+                              <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>${item.class1Base.toFixed(2)}</td>
+                              <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                                {item.siblingDiscount > 0 ? (
+                                  <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px' }}>
+                                    Sibling (10%): -${(item.class1Base * 0.1).toFixed(2)}
+                                  </span>
+                                ) : "-"}
+                              </td>
+                              <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.class1Final.toFixed(2)}</td>
+                            </tr>
+
+                            {(isStandard || isUnlimited) && (
+                              <tr style={{ borderBottom: '1px solid #eef2ff' }}>
+                                <td style={{ padding: '10px 12px' }}>
+                                  <strong style={{ display: 'block', color: 'var(--navy)' }}>Class 2 Tuition</strong>
+                                  <span style={{ color: 'var(--muted)', fontSize: '9px' }}>Bundle slot (Standard pace)</span>
+                                </td>
+                                <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>${item.class2Base.toFixed(2)}</td>
+                                <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-end' }}>
+                                    {item.class2BundleDiscount > 0 && (
+                                      <span style={{ background: '#dcfce7', color: '#15803d', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                                        2x/wk Bundle: -${item.class2BundleDiscount.toFixed(2)}
+                                      </span>
+                                    )}
+                                    {item.siblingDiscount > 0 && item.class2BundledRate > 0 && (
+                                      <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                                        Sibling (10%): -${(item.class2BundledRate * 0.1).toFixed(2)}
+                                      </span>
+                                    )}
+                                    {item.class2BundleDiscount === 0 && item.siblingDiscount === 0 && "-"}
+                                  </div>
+                                </td>
+                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.class2Final.toFixed(2)}</td>
+                              </tr>
+                            )}
+
+                            {isUnlimited && (
+                              <tr style={{ borderBottom: '1px solid #eef2ff' }}>
+                                <td style={{ padding: '10px 12px' }}>
+                                  <strong style={{ display: 'block', color: 'var(--navy)' }}>Unlimited Add-On</strong>
+                                  <span style={{ color: 'var(--muted)', fontSize: '9px' }}>Unlimited swimming access</span>
+                                </td>
+                                <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>${item.unlimitedAddonRate.toFixed(2)}</td>
+                                <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                                  {item.siblingDiscount > 0 ? (
+                                    <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px' }}>
+                                      Sibling (10%): -${(item.unlimitedAddonRate * 0.1).toFixed(2)}
+                                    </span>
+                                  ) : "-"}
+                                </td>
+                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.unlimitedAddonFinal.toFixed(2)}</td>
+                              </tr>
+                            )}
+                          </>
                         )}
 
                         <tr style={{ borderBottom: '1px solid #eef2ff' }}>
@@ -1066,12 +1793,54 @@ export default function HoldForm() {
               </table>
             </div>
 
-            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-              <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Total Due Today</span>
-              <strong style={{ fontSize: '32px', fontWeight: '900', color: '#c8102e', display: 'block', lineHeight: '1' }}>${quotePricing.firstMonthTotal.toFixed(2)}</strong>
+            {/* 2-Box Summary: Ongoing Monthly Subscription (First) & Total Due Today (Second) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px', marginTop: '16px' }}>
+              <div style={{
+                background: '#f8fafc',
+                border: '1.5px solid #e2e8f0',
+                borderRadius: '16px',
+                padding: '14px 12px',
+                textAlign: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(16, 39, 116, 0.04)'
+              }}>
+                <span style={{ fontSize: '10px', fontWeight: '800', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '4px' }}>
+                  Ongoing Monthly
+                </span>
+                <strong style={{ fontSize: '24px', fontWeight: '900', color: 'var(--navy)', lineHeight: '1.1', display: 'block' }}>
+                  ${quotePricing.totalTuition.toFixed(2)}<span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--muted)' }}>/mo</span>
+                </strong>
+                <span style={{ fontSize: '9px', color: 'var(--muted)', marginTop: '4px', display: 'block' }}>
+                  Tuition starting month 2
+                </span>
+              </div>
+
+              <div style={{
+                background: 'linear-gradient(135deg, #fff5f5 0%, #ffeef0 100%)',
+                border: '1.5px solid #fecdd3',
+                borderRadius: '16px',
+                padding: '14px 12px',
+                textAlign: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(200, 16, 46, 0.08)'
+              }}>
+                <span style={{ fontSize: '10px', fontWeight: '800', color: '#c8102e', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '4px' }}>
+                  Total Due Today
+                </span>
+                <strong style={{ fontSize: '24px', fontWeight: '900', color: '#c8102e', lineHeight: '1.1', display: 'block' }}>
+                  ${quotePricing.firstMonthTotal.toFixed(2)}
+                </strong>
+                <span style={{ fontSize: '9px', color: 'var(--muted)', marginTop: '4px', display: 'block' }}>
+                  Tuition + Enrollment Fee
+                </span>
+              </div>
             </div>
 
-            <div className="tuition-description-block" style={{ fontSize: '11px', lineHeight: '1.5', color: 'var(--ink)', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #eef2ff', marginBottom: '24px' }}>
+            <div className="tuition-description-block" style={{ fontSize: '11px', lineHeight: '1.5', color: 'var(--ink)', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #eef2ff', marginBottom: '20px' }}>
               Your first payment on the day you enroll is <strong>${quotePricing.firstMonthTotal.toFixed(2)}</strong>. This includes your first month&apos;s tuition of <strong>${quotePricing.totalTuition.toFixed(2)}</strong> plus a one-time annual enrollment fee of <strong>${quotePricing.totalRegistrationFees.toFixed(2)}</strong>.
               <br/><br/>
               Your ongoing monthly tuition will be <strong>${quotePricing.totalTuition.toFixed(2)}</strong> starting in your second month.
@@ -1081,10 +1850,30 @@ export default function HoldForm() {
               type="button"
               disabled={swimmers.length === 0}
               onClick={goToContact}
-              className="wizard-next"
-              style={{ width: '100%', padding: '14px', borderRadius: '99px', background: swimmers.length === 0 ? '#cbd5e1' : 'var(--blue)', color: '#fff', border: 'none', fontWeight: '800', fontSize: '13px', cursor: swimmers.length === 0 ? 'not-allowed' : 'pointer' }}
+              className="wizard-next step1-continue-btn"
+              style={{
+                width: '100%',
+                padding: '15px 22px',
+                borderRadius: '99px',
+                background: swimmers.length === 0 ? '#cbd5e1' : 'linear-gradient(180deg, #e51d3b 0%, #c8102e 100%)',
+                color: '#fff',
+                border: swimmers.length === 0 ? 'none' : '1px solid #b30c26',
+                fontWeight: '900',
+                fontSize: '15px',
+                letterSpacing: '0.01em',
+                cursor: swimmers.length === 0 ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: swimmers.length === 0 ? 'none' : '0 6px 18px rgba(200, 16, 46, 0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
+                transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)'
+              }}
             >
-              Continue to Spot Hold & Schedules &arr;
+              <span>View Lesson Times</span>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 12L10 8L6 4" />
+              </svg>
             </button>
           </div>
         </div>
@@ -1094,10 +1883,10 @@ export default function HoldForm() {
         <>
           <div className="form-section-heading"><span>1</span><div><p>Parent or guardian</p><h2>Who should we contact?</h2></div></div>
           <div className="form-grid two-column">
-            <label>First name<input className={showValidationErrors && !family.firstName.trim() ? "invalid-field" : ""} value={family.firstName} onChange={(event) => setFamily({ ...family, firstName: event.target.value })} autoComplete="given-name" required /></label>
-            <label>Last name<input className={showValidationErrors && !family.lastName.trim() ? "invalid-field" : ""} value={family.lastName} onChange={(event) => setFamily({ ...family, lastName: event.target.value })} autoComplete="family-name" required /></label>
-            <label>Email address<input className={showValidationErrors && !/\S+@\S+\.\S+/.test(family.email) ? "invalid-field" : ""} value={family.email} onChange={(event) => setFamily({ ...family, email: event.target.value })} type="email" autoComplete="email" required /></label>
-            <label>Mobile phone<input className={showValidationErrors && family.phone.replace(/\D/g, "").length < 10 ? "invalid-field" : ""} value={family.phone} onChange={(event) => setFamily({ ...family, phone: formatPhone(event.target.value) })} type="tel" autoComplete="tel" inputMode="tel" required /></label>
+            <label>First name<input className={showValidationErrors && !family.firstName.trim() ? "invalid-field" : ""} value={family.firstName} onChange={(event) => setFamily({ ...family, firstName: event.target.value })} autoComplete="given-name" required={ENFORCE_REQUIRED_FIELDS} /></label>
+            <label>Last name<input className={showValidationErrors && !family.lastName.trim() ? "invalid-field" : ""} value={family.lastName} onChange={(event) => setFamily({ ...family, lastName: event.target.value })} autoComplete="family-name" required={ENFORCE_REQUIRED_FIELDS} /></label>
+            <label>Email address<input className={showValidationErrors && !/\S+@\S+\.\S+/.test(family.email) ? "invalid-field" : ""} value={family.email} onChange={(event) => setFamily({ ...family, email: event.target.value })} type="email" autoComplete="email" required={ENFORCE_REQUIRED_FIELDS} /></label>
+            <label>Mobile phone<input className={showValidationErrors && family.phone.replace(/\D/g, "").length < 10 ? "invalid-field" : ""} value={family.phone} onChange={(event) => setFamily({ ...family, phone: formatPhone(event.target.value) })} type="tel" autoComplete="tel" inputMode="tel" required={ENFORCE_REQUIRED_FIELDS} /></label>
           </div>
           
           <div className="form-section-heading swimmer-heading"><span>2</span><div><p>Swimmer profiles</p><h2>Tell us who will be swimming.</h2></div></div>
@@ -1106,24 +1895,32 @@ export default function HoldForm() {
               <article key={swimmer.id}>
                 <header><span>{(index + 1)}</span><div><strong>{"Swimmer " + (index + 1)}</strong><small>{AGE_GROUPS.find((group) => group.id === swimmer.ageGroup)?.label}</small></div></header>
                 <div className="form-grid three-column">
-                  <label>First name<input className={showValidationErrors && !swimmer.firstName.trim() ? "invalid-field" : ""} value={swimmer.firstName} onChange={(event) => updateSwimmer(swimmer.id, { firstName: event.target.value })} required /></label>
-                  <label>Date of Birth<input className={((showValidationErrors && !swimmer.dob) || (swimmer.dob && !validDob(swimmer.dob))) ? "invalid-field" : ""} value={swimmer.dob} onChange={(event) => updateSwimmer(swimmer.id, { dob: formatDob(event.target.value) })} onBlur={(event) => handleDobBlur(swimmer.id, event.target.value)} inputMode="numeric" autoComplete="bday" placeholder="MM/DD/YYYY" maxLength={10} required />{swimmer.dobMessage && <p className="dob-warning-text" style={{ gridColumn: 'span 3', margin: '4px 0 0', color: 'var(--red)', fontSize: '10px', fontWeight: '800' }}>{swimmer.dobMessage}</p>}</label>
-                  <label>Gender
-                    <select className={showValidationErrors && !swimmer.gender ? "invalid-field" : ""} value={swimmer.gender} onChange={(event) => updateSwimmer(swimmer.id, { gender: event.target.value })} required>
-                      <option value="">Choose...</option>
-                      <option value="Female">Female</option>
-                      <option value="Male">Male</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </label>
+                  <label>First name<input className={showValidationErrors && !swimmer.firstName.trim() ? "invalid-field" : ""} value={swimmer.firstName} onChange={(event) => updateSwimmer(swimmer.id, { firstName: event.target.value })} required={ENFORCE_REQUIRED_FIELDS} /></label>
+                  <label>Date of Birth<input className={((showValidationErrors && !swimmer.dob) || (swimmer.dob && !validDob(swimmer.dob))) ? "invalid-field" : ""} value={swimmer.dob} onChange={(event) => updateSwimmer(swimmer.id, { dob: formatDob(event.target.value) })} onBlur={(event) => handleDobBlur(swimmer.id, event.target.value)} inputMode="numeric" autoComplete="bday" placeholder="MM/DD/YYYY" maxLength={10} required={ENFORCE_REQUIRED_FIELDS} />{swimmer.dobMessage && <p className="dob-warning-text" style={{ gridColumn: 'span 3', margin: '4px 0 0', color: 'var(--red)', fontSize: '10px', fontWeight: '800' }}>{swimmer.dobMessage}</p>}</label>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '10px', fontWeight: '800', color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Gender</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      {["Female", "Male"].map((g) => (
+                        <button
+                          key={g}
+                          type="button"
+                          className={"select-pill-btn " + (swimmer.gender === g ? "selected" : "") + (showValidationErrors && !swimmer.gender ? " invalid-field" : "")}
+                          onClick={() => updateSwimmer(swimmer.id, { gender: g })}
+                          style={{ padding: '8px 12px', fontSize: '12px' }}
+                        >
+                          {g}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </article>
             ))}
           </div>
 
-          <div className="sms-consent-row">
+          <div className="sms-consent-row" style={{ marginTop: '20px' }}>
             <label className="checkbox-consent">
-              <input className={showValidationErrors && !family.smsConsent ? "invalid-field" : ""} checked={family.smsConsent} onChange={(event) => setFamily({ ...family, smsConsent: event.target.checked })} type="checkbox" required />
+              <input className={showValidationErrors && !family.smsConsent ? "invalid-field" : ""} checked={family.smsConsent} onChange={(event) => setFamily({ ...family, smsConsent: event.target.checked })} type="checkbox" required={ENFORCE_REQUIRED_FIELDS} />
               <span>I consent to receive text messages from British Swim School at the mobile number provided above for scheduling and lesson coordination.</span>
             </label>
           </div>
@@ -1132,325 +1929,372 @@ export default function HoldForm() {
 
           <div className="wizard-actions">
             <button type="button" className="wizard-back" onClick={() => setStep(1)}>&larr; Back to Quote</button>
-            <button type="button" className="wizard-next" onClick={goToLevels}>Continue to Placement Levels &arr;</button>
+            <button type="button" className="wizard-next" onClick={goToLevels}>
+              <span>Continue to Placement Levels</span>
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: '6px' }}>
+                <path d="M6 12L10 8L6 4" />
+              </svg>
+            </button>
           </div>
         </>
       )}
 
       {step === 3 && (
         <>
-          <div className="form-section-heading"><span>3</span><div><p>Placement levels</p><h2>How comfortable is each swimmer?</h2></div></div>
-          <p className="wizard-intro">We use these answers to match each swimmer with the correct skill level. Choose an option below.</p>
-          <div className="swimmer-tabs">
-            {swimmers.map((swimmer, index) => (
-              <button key={swimmer.id} className={activeSwimmer === index ? "active" : ""} onClick={() => setActiveSwimmer(index)} type="button">
-                <span>{(index + 1)}</span><strong>{swimmer.firstName || ("Swimmer " + (index + 1))}</strong>
-              </button>
-            ))}
+          <div className="form-section-heading">
+            <span>3</span>
+            <div>
+              <p>Placement levels</p>
+              <h2>How comfortable is each swimmer?</h2>
+            </div>
           </div>
+          <p className="wizard-intro">
+            Answer the questions below to match each swimmer with the correct skill level. Questions update step-by-step as you answer.
+          </p>
 
-          {swimmers.map((swimmer, index) => {
-            if (activeSwimmer !== index) return null;
-            if (swimmer.ageGroup === "dolphin") return (
-              <div key={swimmer.id} className="swimmer-placement-flow" style={{ textAlign: 'center', padding: '24px', background: '#fafbfe', border: '1px solid #eef2ff', borderRadius: '16px' }}>
-                <strong style={{ color: 'var(--navy)', fontSize: '15px' }}>Dolphin Level Assigned</strong>
-                <p style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '6px' }}>Swimmers in the Adaptive/Special Needs program are automatically placed in our Dolphin curriculum.</p>
-              </div>
-            );
-            return (
-              <div key={swimmer.id} className="swimmer-placement-flow">
-                <div className="placement-mode-choice">
-                  <button type="button" className={swimmer.placementMode === "known" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { placementMode: "known", selectedLevel: "" })}>
-                    <strong>Choose level</strong>
-                    <small>I know their British Swim School level</small>
-                  </button>
-                  <button type="button" className={swimmer.placementMode === "assessment" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { placementMode: "assessment", adaptive: "", firstProgram: "", comfortable: "", floatUnassisted: "", jumpRollFloat: "", glideRecover: "", swimTenYards: "", armsOut: "", treadMinute: "", fourStrokes: "" })}>
-                    <strong>Estimate level</strong>
-                    <small>Answer a few questions about skills</small>
-                  </button>
-                </div>
+          <div
+            className="swimmer-columns-grid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: swimmers.length === 1 ? '1fr' : swimmers.length === 2 ? '1fr 1fr' : 'repeat(auto-fit, minmax(280px, 1fr))',
+              gap: '20px',
+              alignItems: 'start',
+              marginTop: '20px'
+            }}
+          >
+            {swimmers.map((swimmer, index) => {
+              const isComplete = isPlacementComplete(swimmer);
+              const nextQ = getNextQuestion(swimmer);
+              const level = startingLevel(swimmer);
 
-                {swimmer.placementMode === "known" && (
-                  <div className="known-level-selector">
-                    <label>
-                      Select level
-                      <select value={swimmer.selectedLevel} onChange={(event) => updateSwimmer(swimmer.id, { selectedLevel: event.target.value })} required>
-                        <option value="">Choose...</option>
-                        <optgroup label="Known level">
-                          {LEVELS[swimmer.ageGroup]
-                            .filter(level => level !== "Dolphin" || swimmer.adaptive === "yes")
-                            .map((level) => <option key={level} value={level}>{getLevelDisplay(level)}</option>)}
-                        </optgroup>
-                      </select>
-                    </label>
-                  </div>
-                )}
-
-                {swimmer.placementMode === "assessment" && (
-                  <div className="assessment-questions">
-                    <label className="question-item">
-                      <span>Would adaptive or special-needs lessons be the best fit?</span>
-                      <div className="radio-row">
-                        <button type="button" className={swimmer.adaptive === "yes" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { adaptive: "yes" })}>Yes</button>
-                        <button type="button" className={swimmer.adaptive === "no" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { adaptive: "no" })}>No</button>
+              return (
+                <div key={swimmer.id} className="swimmer-column-card">
+                  <div className="swimmer-col-header">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span className="swimmer-col-badge">{index + 1}</span>
+                      <div>
+                        <strong className="swimmer-col-name">{swimmer.firstName || ("Swimmer " + (index + 1))}</strong>
+                        <small className="swimmer-col-age">{AGE_GROUPS.find(g => g.id === swimmer.ageGroup)?.label}</small>
                       </div>
-                    </label>
+                    </div>
+                  </div>
 
-                    {swimmer.adaptive === "no" && (
-                      <>
-                        <label className="question-item">
-                          <span>{"Is this the swimmer&apos;s first structured program?"}</span>
-                          <div className="radio-row">
-                            <button type="button" className={swimmer.firstProgram === "yes" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { firstProgram: "yes" })}>Yes</button>
-                            <button type="button" className={swimmer.firstProgram === "no" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { firstProgram: "no" })}>No</button>
+                  {swimmer.ageGroup === "dolphin" ? (
+                    <div className="placement-result-card">
+                      <span className="level-badge-tag">Adaptive Curriculum</span>
+                      <h4 className="level-title">Dolphin</h4>
+                      <p className="level-desc">{LEVEL_DESCRIPTIONS["Dolphin"]}</p>
+                    </div>
+                  ) : (
+                    <div className="assessment-question-flow">
+                      {nextQ ? (
+                        <div className="single-question-card">
+                          <div className="question-meta-row">
+                            <span className="question-step-count">Step {nextQ.stepNum} of {nextQ.totalSteps}</span>
+                            <span className="question-pill-tag">Question</span>
                           </div>
-                        </label>
+                          <h4 className="question-prompt-text">{nextQ.text}</h4>
 
-                        {swimmer.firstProgram === "no" && (
-                          <label className="question-item">
-                            <span>Is the swimmer comfortable putting their face in the water?</span>
-                            <div className="radio-row">
-                              <button type="button" className={swimmer.comfortable === "yes" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { comfortable: "yes" })}>Yes</button>
-                              <button type="button" className={swimmer.comfortable === "no" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { comfortable: "no" })}>No</button>
+                          <div className="question-button-pair">
+                            <button
+                              type="button"
+                              className={"choice-btn choice-yes " + (swimmer[nextQ.key] === "yes" ? "selected" : "")}
+                              onClick={() => handleQuestionAnswer(swimmer.id, nextQ.key, "yes")}
+                            >
+                              <span className="btn-icon">✓</span>
+                              <span>Yes</span>
+                            </button>
+                            <button
+                              type="button"
+                              className={"choice-btn choice-no " + (swimmer[nextQ.key] === "no" ? "selected" : "")}
+                              onClick={() => handleQuestionAnswer(swimmer.id, nextQ.key, "no")}
+                            >
+                              <span className="btn-icon">✕</span>
+                              <span>No</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {isComplete && (
+                        <div className="placement-result-card">
+                          <span className="level-badge-tag">✓ Starting Level Estimate</span>
+                          <h4 className="level-title">{getLevelDisplay(level)}</h4>
+                          {getRatio(level) && (
+                            <div
+                              className="ratio-context-banner"
+                              style={{
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                color: '#0056b3',
+                                background: '#eef6ff',
+                                border: '1px solid #d0e4ff',
+                                padding: '6px 10px',
+                                borderRadius: '8px',
+                                margin: '6px 0 10px',
+                                textAlign: 'center'
+                              }}
+                            >
+                              Student to instructor ratio of {getRatio(level)} max in this level.
                             </div>
-                          </label>
-                        )}
-
-                        {swimmer.comfortable === "yes" && (
-                          <label className="question-item">
-                            <span>Can the swimmer float on their back unassisted?</span>
-                            <div className="radio-row">
-                              <button type="button" className={swimmer.floatUnassisted === "yes" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { floatUnassisted: "yes" })}>Yes</button>
-                              <button type="button" className={swimmer.floatUnassisted === "no" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { floatUnassisted: "no" })}>No</button>
-                            </div>
-                          </label>
-                        )}
-
-                        {swimmer.floatUnassisted === "yes" && swimmer.ageGroup !== "under3" && (
-                          <label className="question-item">
-                            <span>Can the swimmer swim 10 yards with face in water?</span>
-                            <div className="radio-row">
-                              <button type="button" className={swimmer.swimTenYards === "yes" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { swimTenYards: "yes" })}>Yes</button>
-                              <button type="button" className={swimmer.swimTenYards === "no" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { swimTenYards: "no" })}>No</button>
-                            </div>
-                          </label>
-                        )}
-
-                        {swimmer.swimTenYards === "yes" && swimmer.ageGroup === "child" && (
-                          <label className="question-item">
-                            <span>Can they tread water for 1 minute?</span>
-                            <div className="radio-row">
-                              <button type="button" className={swimmer.treadMinute === "yes" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { treadMinute: "yes" })}>Yes</button>
-                              <button type="button" className={swimmer.treadMinute === "no" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { treadMinute: "no" })}>No</button>
-                            </div>
-                          </label>
-                        )}
-
-                        {swimmer.treadMinute === "yes" && swimmer.ageGroup === "child" && (
-                          <label className="question-item">
-                            <span>Can they swim four distinct strokes (Freestyle, Backstroke, Breaststroke, Butterfly)?</span>
-                            <div className="radio-row">
-                              <button type="button" className={swimmer.fourStrokes === "yes" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { fourStrokes: "yes" })}>Yes</button>
-                              <button type="button" className={swimmer.fourStrokes === "no" ? "selected" : ""} onClick={() => updateSwimmer(swimmer.id, { fourStrokes: "no" })}>No</button>
-                            </div>
-                          </label>
-                        )}
-                      </>
-                    )}
-
-                    {startingLevel(swimmer) && (
-                      <div className="placement-result-preview">
-                        <span>Starting level estimate</span>
-                        <strong>{startingLevel(swimmer)}</strong>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                          )}
+                          <p className="level-desc">{LEVEL_DESCRIPTIONS[level]}</p>
+                          <button
+                            type="button"
+                            className="reanswer-btn"
+                            onClick={() => resetSwimmerQuestions(swimmer.id)}
+                          >
+                            &larr; Back
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
           {message && <p className="form-error" role="alert">{message}</p>}
 
-          <div className="wizard-actions">
+          <div className="wizard-actions" style={{ marginTop: '28px' }}>
             <button type="button" className="wizard-back" onClick={() => setStep(2)}>&larr; Back</button>
-            <button type="button" className="wizard-next" onClick={goToPools}>Choose Pools & Days &arr;</button>
+            <button
+              type="button"
+              className={levelsValid ? "wizard-submit" : "wizard-next"}
+              onClick={goToPools}
+              style={levelsValid ? {
+                padding: '16px 36px',
+                borderRadius: '99px',
+                background: 'linear-gradient(180deg, #e51d3b 0%, #c8102e 100%)',
+                color: '#fff',
+                border: '1px solid #b30c26',
+                fontWeight: '900',
+                fontSize: '16px',
+                letterSpacing: '0.01em',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                boxShadow: '0 8px 24px rgba(200, 16, 46, 0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
+                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+              } : {
+                opacity: 0.7,
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <span>Choose Location &amp; Days</span>
+              <svg width={levelsValid ? "18" : "15"} height={levelsValid ? "18" : "15"} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={levelsValid ? "2.4" : "2.2"} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: '6px' }}>
+                <path d="M6 12L10 8L6 4" />
+              </svg>
+            </button>
           </div>
         </>
       )}
 
       {step === 4 && (
         <>
-          <div className="form-section-heading"><span>4</span><div><p>Pool choices</p><h2>Where would you like to swim?</h2></div></div>
-          <p className="wizard-intro">Choose locations and preferred days of the week. We will find matching classes for you.</p>
+          <div className="form-section-heading"><span>4</span><div><p>Pool choices &amp; days</p><h2>Where &amp; when would you like to swim?</h2></div></div>
+          <p className="wizard-intro">Choose your preferred location(s) and days of the week. We will find matching classes for your family.</p>
           
-          <div className="class-preference-list">
-            {swimmers.map((swimmer) => {
-              const locationsArray = swimmer.location ? swimmer.location.split(",").filter(Boolean) : [];
-              const availableDaysSet = new Set();
-              locationsArray.forEach((locId) => {
-                const days = LOCATION_DAYS[locId] || [];
-                days.forEach((day) => availableDaysSet.add(day));
-              });
-              const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-              const availableDays = dayOrder.filter((day) => availableDaysSet.has(day));
-
-
-
-              const selectedNames = locationsArray.map(id => LOCATIONS.find(l => l.id === id)?.name).filter(Boolean).join(", ");
-              const preferredArray = swimmer.preferredSchedule ? swimmer.preferredSchedule.split(",").map(d => d.trim()).filter(Boolean) : [];
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+            {LOCATIONS.map((location) => {
+              const isLocSelected = familyLocationsArray.includes(location.id);
+              const schedules = LOCATION_SCHEDULES[location.id] || [];
 
               return (
-                <article key={swimmer.id}>
-                  <header><div><strong>{swimmer.firstName}</strong><small>{startingLevel(swimmer)}</small></div><span>Starting level</span></header>
-                  
-                  <div className="pool-choices">
-                    {LOCATIONS.map((location) => {
-                      const isSelected = locationsArray.includes(location.id);
-                      const toggleLocation = () => {
-                        let nextLocs;
-                        if (isSelected) {
-                          nextLocs = locationsArray.filter(id => id !== location.id);
-                        } else {
-                          nextLocs = [...locationsArray, location.id];
-                        }
-                        // Clear preferred days that are no longer available after location change
-                        const newDaysSet = new Set<string>();
-                        nextLocs.forEach(id => (LOCATION_DAYS[id] || []).forEach(d => newDaysSet.add(d)));
-                        const filteredDays = preferredArray.filter(d => newDaysSet.has(d));
-                        updateSwimmer(swimmer.id, { location: nextLocs.join(","), preferredSchedule: filteredDays.join(", ") });
-                      };
-                      return (
-                        <label key={location.id} className={isSelected ? "selected" : ""} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '16px', border: '1px solid #dce3ef', borderRadius: '12px', marginBottom: '10px', cursor: 'pointer' }}>
-                          <input type="checkbox" name={"location_" + swimmer.id} checked={isSelected} onChange={toggleLocation} style={{ width: '18px', height: '18px' }} />
-                          <strong style={{ fontSize: '15px', color: 'var(--navy)' }}>{location.name} - {location.detail}</strong>
-                        </label>
-                      );
-                    })}
+                <div
+                  key={location.id}
+                  style={{
+                    border: isLocSelected ? '2px solid var(--blue)' : '1.5px solid #dce3ef',
+                    borderRadius: '16px',
+                    padding: '18px 20px',
+                    background: isLocSelected ? '#f8faff' : '#fff',
+                    boxShadow: isLocSelected ? '0 4px 14px rgba(19,46,171,0.08)' : 'none',
+                    transition: 'all 0.18s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <strong style={{ fontSize: '16px', color: 'var(--navy)', display: 'block' }}>
+                        {location.name}
+                      </strong>
+                      <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                        {location.detail}
+                      </span>
+                    </div>
+
+                    <a
+                      href={location.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ fontSize: '11px', fontWeight: '800', color: 'var(--blue)', textDecoration: 'none' }}
+                    >
+                      View schedule &rarr;
+                    </a>
                   </div>
 
-                  {locationsArray.length > 0 && availableDays.length > 0 && (
-                    <div style={{ marginTop: '16px' }}>
-                      <p style={{ fontSize: '11px', fontWeight: '800', color: 'var(--navy)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Preferred Days (Select all that fit)</p>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                        {availableDays.map((day) => {
-                          const isDaySelected = preferredArray.includes(day);
-                          const toggleDay = () => {
-                            let nextPreferred;
-                            if (preferredArray.includes(day)) {
-                              nextPreferred = preferredArray.filter(d => d !== day);
-                            } else {
-                              nextPreferred = [...preferredArray, day];
-                            }
-                            updateSwimmer(swimmer.id, { preferredSchedule: nextPreferred.join(", ") });
-                          };
-                          return (
-                            <button
-                              key={day}
-                              type="button"
-                              className={"day-button " + (isDaySelected ? "selected" : "")}
-                              onClick={toggleDay}
-                            >
-                              {day}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  <label className="schedule-note" style={{ marginTop: '16px' }}>Additional preferences <span>optional</span>
-                    <input value={swimmer.preferredSchedule} onChange={(event) => updateSwimmer(swimmer.id, { preferredSchedule: event.target.value })} placeholder="Example: after 5:00 PM or Saturday mornings" />
-                  </label>
-
-                  {locationsArray.length > 0 && (
-                    <p className="availability-note">
-                      <span>Live class match</span>
-                      Our team will confirm openings for {startingLevel(swimmer)} at {selectedNames}. {locationsArray.map((locId, idx) => {
-                        const loc = LOCATIONS.find(l => l.id === locId);
-                        if (!loc) return null;
+                  <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid #eef2ff' }}>
+                    <p style={{ fontSize: '10px', fontWeight: '800', color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+                      Hours &amp; Days of Operation (Select preferred days):
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px' }}>
+                      {schedules.map((s) => {
+                        const isDaySelected = isLocDaySelected(location.id, s.day);
                         return (
-                          <span key={locId} style={{ display: 'inline-block', marginLeft: '6px' }}>
-                            <a href={loc.href} target="_blank" rel="noreferrer">View {loc.name} schedule &rarr;</a>{idx < locationsArray.length - 1 ? ',' : ''}
-                          </span>
+                          <button
+                            key={s.day}
+                            type="button"
+                            onClick={() => toggleFamilyLocationDay(location.id, s.day)}
+                            className={"select-pill-btn " + (isDaySelected ? "selected" : "")}
+                            style={{
+                              padding: '10px 12px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'flex-start',
+                              gap: '2px',
+                              textAlign: 'left',
+                              borderRadius: '10px'
+                            }}
+                          >
+                            <strong style={{ fontSize: '12px' }}>{s.day}</strong>
+                            <span style={{ fontSize: '10px', opacity: 0.85, fontWeight: 'normal' }}>{s.hours}</span>
+                          </button>
                         );
                       })}
-                    </p>
-                  )}
-                </article>
+                    </div>
+                  </div>
+                </div>
               );
             })}
           </div>
 
-          <div className="form-section-heading swimmer-heading"><span>5</span><div><p>Referral</p><h2>How did you hear about us?</h2></div></div>
-          <div className="form-grid two-column">
-            <label>Referral source
-              <select value={referral.source} onChange={(event) => setReferral({ ...referral, source: event.target.value })} required>
-                <option value="">Choose...</option>
-                <option value="Google Search">Google Search</option>
-                <option value="Facebook/Instagram">Facebook/Instagram</option>
-                <option value="Word of Mouth / Referral">Word of Mouth / Referral</option>
-                <option value="Drive By / Location Signs">Drive By / Location Signs</option>
-                <option value="Other">Other</option>
-              </select>
-            </label>
-
-            {referral.source === "Word of Mouth / Referral" && (
-              <label>{"Referred by (friend&apos;s name)"}<input value={referral.friendName} onChange={(event) => setReferral({ ...referral, friendName: event.target.value })} placeholder={"Friend&apos;s full name"} required /></label>
-            )}
-
-            {referral.source === "Other" && (
-              <label>Details<input value={referral.other} onChange={(event) => setReferral({ ...referral, other: event.target.value })} placeholder="How you found us" required /></label>
-            )}
-          </div>
+          <label className="schedule-note" style={{ marginTop: '18px' }}>
+            Additional schedule preferences <span>optional</span>
+            <input
+              value={familyScheduleNote}
+              onChange={(event) => handleScheduleNoteChange(event.target.value)}
+              placeholder="Example: after 5:00 PM or Saturday mornings"
+            />
+          </label>
 
           {message && <p className="form-error" role="alert">{message}</p>}
 
           <div className="wizard-actions">
             <button type="button" className="wizard-back" onClick={() => setStep(3)}>&larr; Back</button>
-            <button type="button" className="wizard-next" onClick={goToReview}>Review my details &arr;</button>
+            <button type="button" className="wizard-next" onClick={goToReview}>
+              <span>Review my details</span>
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: '6px' }}>
+                <path d="M6 12L10 8L6 4" />
+              </svg>
+            </button>
           </div>
         </>
       )}
 
       {step === 5 && !handedOff && (
-        <>
+        <form onSubmit={onSubmit}>
           <div className="form-section-heading"><span>5</span><div><p>Review</p><h2>Everything we need to help your family.</h2></div></div>
-          
-          <div className="review-family">
-            <strong>{family.firstName} {family.lastName}</strong>
-            <span>{family.email} · {family.phone}</span>
+
+          {/* Referral source section in Step 5 */}
+          <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: '16px', padding: '18px 20px', margin: '20px 0' }}>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+              How did you hear about us?
+            </label>
+            <select
+              value={referral.source}
+              onChange={(event) => setReferral({ ...referral, source: event.target.value })}
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                borderRadius: '10px',
+                border: '1.5px solid #dce3ef',
+                fontSize: '13px',
+                color: 'var(--navy)',
+                background: '#fff',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="">Select an option...</option>
+              {REFERRAL_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+
+            {referral.source === "Referral" && (
+              <div style={{ marginTop: '12px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: 'var(--navy)', marginBottom: '4px' }}>
+                  Who can we thank for referring you?
+                </label>
+                <input
+                  type="text"
+                  placeholder="Friend or family member's full name"
+                  value={referral.friendName}
+                  onChange={(event) => setReferral({ ...referral, friendName: event.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1.5px solid #dce3ef',
+                    fontSize: '13px'
+                  }}
+                />
+              </div>
+            )}
           </div>
 
-          <div className="review-swimmers">
-            {swimmers.map((swimmer) => (
-              <article key={swimmer.id}>
-                <header>
-                  <div>
-                    <strong>{swimmer.firstName}</strong>
-                    <small>{swimmer.dob} · {swimmer.gender}</small>
-                  </div>
-                  <b>{startingLevel(swimmer)}</b>
-                </header>
-                <p>
-                  {swimmer.location ? swimmer.location.split(",").map(id => LOCATIONS.find(l => l.id === id)?.name).filter(Boolean).join(", ") : "No location selected"}
-                  {swimmer.preferredSchedule ? " · " + swimmer.preferredSchedule : ""}
-                </p>
-              </article>
-            ))}
-          </div>
-
-          <div className="review-referral">
-            <span>How you heard about us</span>
-            <strong>{referral.source}{referral.friendName ? " · Referred by " + referral.friendName : referral.other ? " · " + referral.other : ""}</strong>
-          </div>
+          {/* Big Red Button Prominently at Top */}
+          <button
+            type="submit"
+            className="wizard-submit"
+            style={{
+              width: '100%',
+              padding: '16px 24px',
+              borderRadius: '99px',
+              background: 'linear-gradient(180deg, #e51d3b 0%, #c8102e 100%)',
+              color: '#fff',
+              border: '1px solid #b30c26',
+              fontWeight: '900',
+              fontSize: '16px',
+              letterSpacing: '0.01em',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px',
+              boxShadow: '0 8px 24px rgba(200, 16, 46, 0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
+              transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+              margin: '20px 0 24px'
+            }}
+          >
+            <span>Request Scheduling Assistance</span>
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 12L10 8L6 4" />
+            </svg>
+          </button>
 
           <div className="coordinated-section">
             <h3>Class Openings Found</h3>
             {loadingOpenings ? (
               <p style={{ fontSize: '13px', color: 'var(--muted)' }}>Searching live pool schedules...</p>
             ) : coordinatedMatches.length === 0 ? (
-              <p style={{ fontSize: '13px', color: 'var(--muted)' }}>No direct openings found for the selected criteria. Our team will manually check other options and text you.</p>
+              <div style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '16px',
+                padding: '16px 20px',
+                marginTop: '10px'
+              }}>
+                <p style={{ fontSize: '14px', color: 'var(--navy)', fontWeight: '700', marginBottom: '4px' }}>
+                  {swimmers.length > 1
+                    ? "No coordinated sibling times found for the selected criteria."
+                    : "No direct matching openings found for the selected schedule."}
+                </p>
+                <p style={{ fontSize: '13px', color: 'var(--muted)', margin: 0, lineHeight: '1.5' }}>
+                  Our team will help coordinate availability for their 2-class trial. Request scheduling assistance above and we will contact you with custom options.
+                </p>
+              </div>
             ) : (
               <div className="matches-list">
                 {coordinatedMatches.slice(0, 6).map((match, idx) => (
@@ -1465,21 +2309,56 @@ export default function HoldForm() {
                       {match.type === "same-day" && <span className="match-badge badge-same-day">Same Day</span>}
                     </div>
                     <div className="match-classes">
-                      {match.classes.map((cls, cIdx) => (
-                        <div className="match-class-item" key={cIdx}>
-                          <span className="class-info-line">
-                            <strong>{cls.swimmerName}</strong>: {cls.level} with Coach {getInstructorName(cls.classObj)}
-                          </span>
-                          <a
-                            className="register-btn"
-                            href={getPreciseRegisterUrl(cls.classObj, cls.level, cls.classObj.location_code)}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Book Class ↗
-                          </a>
-                        </div>
-                      ))}
+                      {match.classes.map((cls, cIdx) => {
+                        const openingsCount = getOpeningsCount(cls.classObj);
+                        return (
+                          <div className="match-class-item" key={cIdx}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <span className="class-info-line">
+                                <strong>{cls.swimmerName}</strong>: {cls.level.replace(/\s*\d+:\d+$/, "")} with Coach {getInstructorName(cls.classObj)}
+                              </span>
+                              <span style={{
+                                fontSize: '11.5px',
+                                fontWeight: '750',
+                                color: openingsCount === 1 ? '#d97706' : '#16a34a',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px'
+                              }}>
+                                <span style={{
+                                  display: 'inline-block',
+                                  width: '7px',
+                                  height: '7px',
+                                  borderRadius: '50%',
+                                  background: openingsCount === 1 ? '#d97706' : '#16a34a'
+                                }} />
+                                {openingsCount} {openingsCount === 1 ? 'opening available' : 'openings available'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="match-card-footer" style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end' }}>
+                      <a
+                        className="register-btn"
+                        href={getPreciseRegisterUrl(
+                          match.classes[0].classObj,
+                          match.classes[0].level,
+                          match.classes[0].classObj.location_code,
+                          family,
+                          referral,
+                          match.classes[0].swimmerName,
+                          swimmers,
+                          buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
+                        )}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ padding: '9px 20px', fontSize: '12.5px' }}
+                      >
+                        Book 2-Class Trial ↗
+                      </a>
                     </div>
                   </article>
                 ))}
@@ -1492,55 +2371,192 @@ export default function HoldForm() {
             <p>These levels are estimates based on your answers. Every swimmer receives an assessment during the first lesson. If another level is a better fit, we will make the adjustment.</p>
           </div>
 
-          <form onSubmit={onSubmit} style={{ marginTop: '24px' }}>
+          <div style={{ marginTop: '24px' }}>
             <label className="honeypot" aria-hidden="true">Company<input name="company" tabIndex={-1} autoComplete="off" /></label>
             {message && <p className="form-error" role="alert">{message}</p>}
             
             <div className="wizard-actions">
               <button type="button" className="wizard-back" onClick={() => setStep(4)}>&larr; Back</button>
-              <button type="submit" className="wizard-submit">Request Call & Book Spots &arr;</button>
             </div>
-          </form>
-        </>
+          </div>
+        </form>
       )}
 
       {handedOff && (
-        <div className="wizard-handoff" style={{ background: '#fff', border: '1px solid #dce3ef', borderRadius: '20px', padding: '24px', textAlign: 'center' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '800', color: 'var(--navy)', marginBottom: '8px' }}>✓ Request Received!</h2>
-          <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '20px' }}>We have logged your request. You can copy the request summary below to text it directly to our office.</p>
-          
-          <textarea
-            value={composed}
-            readOnly
-            style={{ width: '100%', height: '140px', padding: '12px', border: '1px solid #dce3ef', borderRadius: '12px', fontSize: '12px', fontFamily: 'monospace', resize: 'none', background: '#fafbfe', marginBottom: '16px' }}
-          />
+        <div className="wizard-handoff" style={{ background: '#fff', border: '1px solid #dce3ef', borderRadius: '24px', padding: '32px 24px', textAlign: 'center' }}>
+          <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#dcfce7', color: '#16a34a', fontSize: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontWeight: '900', boxShadow: '0 4px 14px rgba(22,163,74,0.18)' }}>
+            ✓
+          </div>
+          <h2 style={{ fontSize: '24px', fontWeight: '850', color: 'var(--navy)', marginBottom: '8px' }}>
+            We Received Your Request!
+          </h2>
+          <p style={{ fontSize: '14px', color: 'var(--muted)', maxWidth: '620px', margin: '0 auto 24px', lineHeight: '1.6' }}>
+            Our local team has logged your details and will text or call you shortly to coordinate lesson schedules and answer any questions for your family.
+          </p>
 
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center', marginBottom: '32px' }}>
             <button
               type="button"
               onClick={copyToClipboard}
-              style={{ padding: '12px 24px', borderRadius: '99px', background: 'var(--navy)', color: '#fff', border: 'none', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }}
+              className="select-pill-btn"
+              style={{ padding: '12px 22px', fontSize: '13px', borderRadius: '99px' }}
             >
-              {copied ? "Copied!" : "Copy Summary"}
+              {copied ? "✓ Copied Summary" : "📋 Copy Summary"}
             </button>
             {onMobile ? (
               <a
                 href={"sms:" + SCHOOL_SMS + "?body=" + encodeURIComponent(composed)}
-                style={{ padding: '12px 24px', borderRadius: '99px', background: 'var(--blue)', color: '#fff', textDecoration: 'none', fontWeight: '800', fontSize: '13px' }}
+                style={{ padding: '12px 24px', borderRadius: '99px', background: 'var(--blue)', color: '#fff', textDecoration: 'none', fontWeight: '800', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(19,46,171,0.2)' }}
               >
-                Send Text Message
+                💬 Text Our Office (817-973-5455)
               </a>
             ) : (
               <a
-                href={"mailto:" + SCHOOL_EMAIL + "?subject=Class Help Request&body=" + encodeURIComponent(composed)}
-                style={{ padding: '12px 24px', borderRadius: '99px', background: 'var(--blue)', color: '#fff', textDecoration: 'none', fontWeight: '800', fontSize: '13px' }}
+                href={"mailto:" + SCHOOL_EMAIL + "?subject=Class Scheduling Assistance Request&body=" + encodeURIComponent(composed)}
+                style={{ padding: '12px 24px', borderRadius: '99px', background: 'var(--blue)', color: '#fff', textDecoration: 'none', fontWeight: '800', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(19,46,171,0.2)' }}
               >
-                Send Email
+                ✉️ Email Our Office
               </a>
             )}
           </div>
+
+          <div style={{ borderTop: '1px solid #eef2ff', paddingTop: '28px', marginTop: '12px', textAlign: 'left' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--navy)', marginBottom: '6px', textAlign: 'center' }}>
+              Explore Our Pool Locations &amp; Google Reviews
+            </h3>
+            <p style={{ fontSize: '12px', color: 'var(--muted)', textAlign: 'center', marginBottom: '20px' }}>
+              Find directions on Google Maps, read reviews, or view dedicated pool schedules.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '28px' }}>
+              {[
+                {
+                  name: "Arlington Pool",
+                  facility: "LA Fitness on Little Road",
+                  address: "3810 S Little Rd, Arlington, TX 76016",
+                  mapsUrl: "https://www.google.com/maps/search/?api=1&query=British+Swim+School+at+LA+Fitness+-+Arlington+3810+S+Little+Rd",
+                  webUrl: "https://britishswimschool.com/arlington-south-grand-prairie/location/arlington-la-fitness-little-road/"
+                },
+                {
+                  name: "Mansfield Pool",
+                  facility: "24 Hour Fitness on Walnut Creek",
+                  address: "980 N Walnut Creek Dr, Mansfield, TX 76063",
+                  mapsUrl: "https://www.google.com/maps/search/?api=1&query=British+Swim+School+at+24+Hour+Fitness+-+Mansfield+980+N+Walnut+Creek+Dr",
+                  webUrl: "https://britishswimschool.com/arlington-south-grand-prairie/location/mansfield-24-hour-fitness/"
+                },
+                {
+                  name: "Grand Prairie Pool",
+                  facility: "LA Fitness on I-20",
+                  address: "2803 W Interstate 20, Grand Prairie, TX 75052",
+                  mapsUrl: "https://www.google.com/maps/search/?api=1&query=British+Swim+School+at+LA+Fitness+-+South+Grand+Prairie+2803+W+Interstate+20",
+                  webUrl: "https://britishswimschool.com/arlington-south-grand-prairie/location/grand-prairie-la-fitness/"
+                }
+              ].map((loc) => (
+                <div
+                  key={loc.name}
+                  style={{
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '16px',
+                    padding: '18px',
+                    background: '#f8fafc',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: '12px'
+                  }}
+                >
+                  <div>
+                    <strong style={{ fontSize: '15px', color: 'var(--navy)', display: 'block', marginBottom: '2px' }}>
+                      {loc.name}
+                    </strong>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
+                      {loc.facility}
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>
+                      📍 {loc.address}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <a
+                      href={loc.mapsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="select-pill-btn"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: '8px 12px',
+                        fontSize: '11px',
+                        textDecoration: 'none'
+                      }}
+                    >
+                      📍 View on Google Maps / Reviews ↗
+                    </a>
+                    <a
+                      href={loc.webUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: '800',
+                        color: 'var(--blue)',
+                        textAlign: 'center',
+                        textDecoration: 'none',
+                        padding: '4px'
+                      }}
+                    >
+                      Pool Details &amp; Schedule ↗
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ textAlign: 'center', paddingTop: '16px', borderTop: '1px solid #eef2ff' }}>
+              <a
+                href="https://britishswimschool.com/arlington-south-grand-prairie/"
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '12px 24px',
+                  borderRadius: '99px',
+                  background: 'var(--navy)',
+                  color: '#fff',
+                  textDecoration: 'none',
+                  fontWeight: '800',
+                  fontSize: '13px'
+                }}
+              >
+                🌐 Visit British Swim School Official Website ↗
+              </a>
+              <div style={{ marginTop: '14px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHandedOff(false);
+                    setStep(1);
+                  }}
+                  style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  Start over with a new quote
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
+
+      <div className="hold-card-footer" style={{ justifyContent: 'flex-end' }}>
+        <div className="footer-links">
+          <Link href="/answers" className="footer-guide-link">Pricing, flexibility &amp; trial details &rarr;</Link>
+        </div>
+      </div>
     </div>
   );
 }

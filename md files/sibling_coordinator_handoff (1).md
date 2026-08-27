@@ -133,17 +133,26 @@ const linkMatch = registerLink.match(/[?&preLoadClassID|ClassID|xID|classid|prel
 const id = linkMatch ? linkMatch[2] : Math.random().toString(36).substr(2, 9);
 ```
 
-### Dynamic Parameters Injection (`FamilyCoordinatorPage.tsx`)
+### Dynamic Parameters Injection (`HoldForm.tsx`)
 ```typescript
-export function getPreciseRegisterUrl(cls: any, level: string, locCode: string, dir: any) {
-  const basePreload = "https://app.jackrabbitclass.com/regv2/regga.aspx?id=553758";
-  const finalLoc = locCode === "LAFGP" ? "LAFGP" : (locCode === "LAFLITT" ? "LAFLITT" : "MAN24H");
+export function getPreciseRegisterUrl(cls: any, level: string, locCode: string) {
+  const finalLoc = (locCode === "LAFGP" || locCode === "gp") ? "LAFGP" : ((locCode === "LAFLITT" || locCode === "arl") ? "LAFLITT" : "MAN24H");
   
-  if (cls.id && cls.id.length > 5) {
-    return `${basePreload}&preLoadClassID=${cls.id}&loc=${finalLoc}`;
+  if (cls.online_reg_link) {
+    let link = cls.online_reg_link.replace(/&amp;/g, "&");
+    if (link.includes("loc=") && link.endsWith("loc=")) {
+      link = link.replace(/loc=$/, "loc=" + finalLoc);
+    } else if (!link.includes("loc=")) {
+      link += "&loc=" + finalLoc;
+    }
+    return link;
   }
-  // Fallback pattern matching
-  return `${basePreload}&loc=${finalLoc}`;
+
+  const basePreload = "https://app.jackrabbitclass.com/reg.asp?id=553758";
+  if (cls.id && String(cls.id).length > 4) {
+    return basePreload + "&preLoadClassID=" + cls.id + "&loc=" + finalLoc;
+  }
+  return basePreload + "&loc=" + finalLoc;
 }
 ```
 

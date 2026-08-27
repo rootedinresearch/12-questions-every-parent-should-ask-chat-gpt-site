@@ -148,7 +148,7 @@ export default function Home() {
                 <span><strong>Find My Class Time</strong><small>Use our starting level estimator</small></span>
                 <span aria-hidden="true">→</span>
               </Link>
-              <Link href="/hold" className="location-link">
+              <Link href="/hold" className="location-link featured-quote-btn">
                 <span><strong>Instant Family Quote</strong><small>Get a quick tuition estimate</small></span>
                 <span aria-hidden="true">→</span>
               </Link>
