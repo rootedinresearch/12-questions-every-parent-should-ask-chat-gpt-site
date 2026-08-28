@@ -978,12 +978,10 @@ function buildEnrollmentSynopsis(
 }
 
 function getPreciseRegisterUrl(
-  cls: JackrabbitClass,
-  level: string,
+  matchedClasses: { swimmerName: string; level: string; classObj: JackrabbitClass }[],
   locCode: string,
   family?: { firstName: string; lastName: string; email: string; phone: string; smsConsent: boolean },
   referral?: { source: string; friendName: string; other: string },
-  primarySwimmerName?: string,
   allSwimmers?: Swimmer[],
   comments?: string
 ): string {
@@ -992,11 +990,19 @@ function getPreciseRegisterUrl(
   const baseUrl = "https://app.jackrabbitclass.com/reg.asp";
   const params = new URLSearchParams();
   params.set("id", "553758");
-  if (cls.id && String(cls.id).length > 4) {
-    params.set("preLoadClassID", String(cls.id));
-  }
   params.set("loc", finalLoc);
 
+  // Extract all valid Jackrabbit class IDs from all swimmers in this match
+  const classIds = matchedClasses
+    .map(c => c.classObj.id)
+    .filter(id => id && String(id).length > 4);
+
+  if (classIds.length > 0) {
+    // Pass comma-separated class IDs so Jackrabbit pre-loads all classes for the siblings
+    params.set("preLoadClassID", classIds.join(","));
+  }
+
+  // Pre-populate Parent / Primary Caregiver details
   if (family) {
     if (family.firstName) params.set("MFName", family.firstName.trim());
     if (family.lastName) params.set("MLName", family.lastName.trim());
@@ -1014,32 +1020,65 @@ function getPreciseRegisterUrl(
     if (refDetail) params.set("ReferralName", refDetail);
   }
 
-  if (comments) {
-    params.set("Comments", comments.slice(0, 450));
-  }
+  // Pre-populate EVERY Swimmer and Sibling (S1, S2, S3, S4, etc.)
+  const swimmersToPopulate = (allSwimmers && allSwimmers.length > 0)
+    ? allSwimmers
+    : matchedClasses.map((mc, idx) => ({
+        id: `swimmer_${idx + 1}`,
+        firstName: mc.swimmerName,
+        dob: "",
+        gender: "",
+        ageGroup: "child" as const,
+        placementMode: "assessment",
+        selectedLevel: mc.level,
+        adaptive: "",
+        firstProgram: "",
+        comfortable: "",
+        separateCaregiver: "",
+        waitTurn: "",
+        floatUnassisted: "",
+        jumpRollFloat: "",
+        swimFreestyleBackstroke: "",
+        faceInWater: "",
+        swimTenYardsSideBreath: "",
+        treadMinute: "",
+        location: locCode,
+        preferredSchedule: "",
+        pace: "foundation"
+      }));
 
-  if (allSwimmers && allSwimmers.length > 0) {
-    // Sort so the swimmer associated with this class is Swimmer 1 (S1)
-    const targetSwimmer = allSwimmers.find(s => s.firstName === primarySwimmerName) || allSwimmers[0];
-    const otherSwimmers = allSwimmers.filter(s => s !== targetSwimmer);
-    const orderedSwimmers = [targetSwimmer, ...otherSwimmers];
+  swimmersToPopulate.forEach((swimmer, idx) => {
+    const prefix = `S${idx + 1}`;
+    const fallbackName = `Swimmer ${idx + 1}`;
+    const name = swimmer.firstName?.trim() || fallbackName;
+    params.set(`${prefix}FName`, name);
+    params.set(`${prefix}LName`, family?.lastName?.trim() || "Family");
+    if (swimmer.gender) {
+      const g = swimmer.gender.trim();
+      params.set(`${prefix}Gender`, g.toLowerCase().startsWith("f") ? "Female" : (g.toLowerCase().startsWith("m") ? "Male" : g));
+    }
+    if (swimmer.dob) {
+      params.set(`${prefix}BDate`, swimmer.dob.trim());
+    }
+    if (swimmer.adaptive === "yes" || swimmer.ageGroup === "dolphin") {
+      params.set(`${prefix}SpecNeeds`, "Y");
+    }
+  });
 
-    orderedSwimmers.forEach((swimmer, idx) => {
-      const prefix = `S${idx + 1}`;
-      if (swimmer.firstName) params.set(`${prefix}FName`, swimmer.firstName.trim());
-      if (family?.lastName) params.set(`${prefix}LName`, family.lastName.trim());
-      if (swimmer.gender) {
-        const g = swimmer.gender.trim();
-        params.set(`${prefix}Gender`, g.toLowerCase().startsWith("f") ? "Female" : (g.toLowerCase().startsWith("m") ? "Male" : g));
-      }
-      if (swimmer.dob) {
-        params.set(`${prefix}BDate`, swimmer.dob.trim());
-      }
-      if (swimmer.adaptive === "yes") {
-        params.set(`${prefix}SpecNeeds`, "Y");
-      }
-    });
-  }
+  // Build explicit comments outlining each swimmer's coordinated level, day, and time
+  const classBreakdown = matchedClasses.map((mc, idx) => {
+    const sName = mc.swimmerName || `Swimmer ${idx + 1}`;
+    const time = formatTime12h(mc.classObj.start_time);
+    const cleanLevel = mc.level.replace(/\s*\d+:\d+$/, "");
+    return `${sName}: ${cleanLevel} at ${time} (Class #${mc.classObj.id})`;
+  }).join(" | ");
+
+  const combinedComments = [
+    comments,
+    `Coordinated Classes: ${classBreakdown}`
+  ].filter(Boolean).join(" -- ");
+
+  params.set("Comments", combinedComments.slice(0, 480));
 
   return `${baseUrl}?${params.toString()}`;
 }
@@ -2879,12 +2918,10 @@ export default function HoldForm() {
                       <a
                         className="register-btn"
                         href={getPreciseRegisterUrl(
-                          match.classes[0].classObj,
-                          match.classes[0].level,
+                          match.classes,
                           match.classes[0].classObj.location_code,
                           family,
                           referral,
-                          match.classes[0].swimmerName,
                           swimmers,
                           buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
                         )}
@@ -3035,12 +3072,10 @@ export default function HoldForm() {
                             <a
                               className="register-btn"
                               href={getPreciseRegisterUrl(
-                                match.classes[0].classObj,
-                                match.classes[0].level,
+                                match.classes,
                                 match.classes[0].classObj.location_code,
                                 family,
                                 referral,
-                                match.classes[0].swimmerName,
                                 swimmers,
                                 buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
                               )}
