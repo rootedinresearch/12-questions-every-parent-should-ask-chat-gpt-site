@@ -1717,7 +1717,7 @@ export default function HoldForm() {
       <div className="wizard-progress" aria-label={"Step " + step + " of 5"}>
         {[
           { num: 1, label: "Instant Quote" },
-          { num: 2, label: "Profiles" },
+          { num: 2, label: "Swimmers" },
           { num: 3, label: "Levels" },
           { num: 4, label: "Schedule" },
           { num: 5, label: "Review" }
@@ -3316,7 +3316,7 @@ export default function HoldForm() {
 
       <div className="hold-card-footer" style={{ justifyContent: 'flex-end' }}>
         <div className="footer-links">
-          <Link href="/answers" className="footer-guide-link">Pricing, flexibility &amp; trial details &rarr;</Link>
+          <Link href="/answers" className="footer-guide-link">FAQs, Makeups, and Trial Details &rarr;</Link>
         </div>
       </div>
     </div>

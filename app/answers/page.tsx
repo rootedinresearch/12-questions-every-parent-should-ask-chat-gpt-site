@@ -81,33 +81,40 @@ export default function AnswersPage() {
             All local swim schools will be about the same price. What really sets us apart is that we’ve built a family-first program designed for real schedules:
           </p>
           <ul className="check-list" style={{ listStyle: 'none', padding: 0 }}>
-            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
-              <span style={{ position: 'absolute', left: 0 }}>✅</span> Flat, predictable monthly tuition
-            </li>
-            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
-              <span style={{ position: 'absolute', left: 0 }}>✅</span> No sessions — lessons continue year-round in indoor, heated pools, so you never lose your spot
-            </li>
-            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
-              <span style={{ position: 'absolute', left: 0 }}>✅</span> One weekly class time with the same instructor (for example, Wednesday at 6pm every week)
-            </li>
-            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
-              <span style={{ position: 'absolute', left: 0 }}>✅</span> Swim at any of our three locations — Mansfield, Grand Prairie, or Arlington
-            </li>
-            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
-              <span style={{ position: 'absolute', left: 0 }}>✅</span> Flexible absence policy with makeups that never expire
-            </li>
-            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
-              <span style={{ position: 'absolute', left: 0 }}>✅</span> No extra charges when a month has a 5th lesson
-            </li>
-            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
-              <span style={{ position: 'absolute', left: 0 }}>✅</span> Pause Program if life gets busy — pause lessons, keep unused makeups, and return to the top of the waitlist
-            </li>
-            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
-              <span style={{ position: 'absolute', left: 0 }}>✅</span> 2-class money-back trial — enroll, take two lessons, and if it’s not the right fit, receive a full refund
-            </li>
-            <li style={{ paddingLeft: '32px', position: 'relative', margin: '12px 0', fontSize: '14px', color: 'var(--ink)' }}>
-              <span style={{ position: 'absolute', left: 0 }}>✅</span> Easy pause or withdrawal through the app with 30-day notice after the trial
-            </li>
+            {[
+              "Flat, predictable monthly tuition",
+              "No sessions — lessons continue year-round in indoor, heated pools, so you never lose your spot",
+              "One weekly class time with the same instructor (for example, Wednesday at 6pm every week)",
+              "Swim at any of our three locations — Mansfield, Grand Prairie, or Arlington",
+              "Flexible absence policy with makeups that never expire",
+              "No extra charges when a month has a 5th lesson",
+              "Pause Program if life gets busy — pause lessons, keep unused makeups, and return to the top of the waitlist",
+              "2-class money-back trial — enroll, take two lessons, and if it’s not the right fit, receive a full refund",
+              "Easy pause or withdrawal through the app with 30-day notice after the trial"
+            ].map((text, idx) => (
+              <li key={idx} style={{ paddingLeft: '34px', position: 'relative', margin: '14px 0', fontSize: '14px', color: 'var(--ink)', lineHeight: '1.45' }}>
+                <span
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: '1px',
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    background: '#102774',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#facc15" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3.5 8.5L6.5 11.5L12.5 4.5" />
+                  </svg>
+                </span>
+                {text}
+              </li>
+            ))}
           </ul>
           <p style={{ marginTop: '24px', fontSize: '13px', lineHeight: '1.6', color: 'var(--muted)', fontStyle: 'italic', background: '#eef2ff', padding: '16px', borderRadius: '12px' }}>
             We are a local family with four kids in Mansfield ISD, and you’ll often see us on deck. It’s the same program we put our own kids in, which is exactly how we designed it.
@@ -152,15 +159,14 @@ export default function AnswersPage() {
         <h2>Find the right class and jump on in.</h2>
         <p>Choose your pool to view schedules and enroll—or reach out and a real member of our local team will help.</p>
         <div className="enroll-actions">
-          <Link className="enroll-primary" href="/hold">Find my class time</Link>
+          <Link className="enroll-primary" href="/hold">Instant Quote</Link>
+          <Link href="/hold">Find my class time</Link>
           <a href="#availability">View schedules &amp; enroll</a>
           <a href="sms:+18179735455?body=Hi%20British%20Swim%20School!%20I%20have%20a%20question%20about%20pricing%20or%20finding%20the%20right%20class.">Text us</a>
           <a href="mailto:goswimarlsgpra@britishswimschool.com?subject=Help%20finding%20the%20right%20swim%20class">Email us</a>
         </div>
         <small>Arlington · Mansfield · Grand Prairie</small>
       </section>
-
-      <footer className="answers-footer"><span>Locally owned by Greg &amp; Melissa Hladik</span><Link href="/">Explore the 12-question parent guide →</Link></footer>
     </main>
   );
 }
