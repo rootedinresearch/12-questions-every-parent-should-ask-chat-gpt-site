@@ -215,23 +215,23 @@ const LEVELS: Record<AgeGroup, string[]> = {
 };
 
 const LEVEL_DESCRIPTIONS: Record<string, string> = {
-  "Tadpole 6:1": "This is our water acclimation starting level for infants & toddlers where they learn water comfort, gentle submersions, and trust with caregiver guidance.",
-  "Swimboree 4:1": "This is our progression level for toddlers where they build water confidence, independent paddling, and survival back floating.",
-  "Seahorse 4:1": "This is our advanced toddler level where swimmers master independent survival back floats, rollover breathing, and unassisted movement.",
-  "Starfish 4:1": "This is our starting level for kids (ages 3–12) where they learn to build water confidence, full submersions, and an independent back float.",
-  "Minnow 4:1": "This is our beginner water survival level for kids where they master independent back floating, rollover survival breathing, and core pool safety.",
-  "Turtle 1 4:1": "This is our stroke introduction level where swimmers build propulsion, streamlined push-glides, backstroke kick, and safe water entries.",
-  "Turtle 2 6:1": "This is our intermediate stroke level where swimmers develop freestyle propulsion, rhythmic side breathing, and backstroke mastery.",
-  "Shark 1": "This is our advanced stroke level where swimmers master continuous freestyle, backstroke, and the fundamentals of breaststroke.",
-  "Shark 2": "This is our stroke refinement level where swimmers master breaststroke, learn butterfly technique, and build endurance.",
-  "Barracuda": "This is our elite swim level where swimmers perfect all four competitive strokes and build pre-swim team endurance.",
-  "Young Adult 1": "This is our starting level for teens where they learn water safety, breath control, and independent floating in a comfortable peer environment.",
-  "Young Adult 2": "This is our teen stroke development level focusing on freestyle propulsion, rhythmic side breathing, and backstroke mechanics.",
-  "Young Adult 3": "This is our advanced teen level where swimmers master multi-stroke proficiency, fitness endurance, and speed.",
-  "Adult 1": "This is our starting level for adults where they learn water comfort, floating, breath management, and core survival safety.",
-  "Adult 2": "This is our adult stroke mechanics level where swimmers develop freestyle propulsion, side breathing, and backstroke technique.",
-  "Adult 3": "This is our advanced adult level where swimmers master continuous lap swimming, multi-stroke proficiency, and cardio conditioning.",
-  "Dolphin": "This is our personalized adaptive program tailored to individual sensory, cognitive, and physical needs with customized 1-on-1 instruction."
+  "Tadpole 6:1": "This is the 1st of 3 survival levels where we start to build the independent backfloat and gentle jump into the pool so babies and toddlers learn to save themselves if they ever fall into water.",
+  "Swimboree 4:1": "This is the 2nd of 3 survival levels where we continue building the independent backfloat and jump into the pool, but also start working on rolling over if they fall face-first into the water. We also transition students to work directly with our instructors so parents can step out of the water in the next level.",
+  "Seahorse 4:1": "This is the 3rd of 3 survival levels where we combine the first two levels' skills into one full movement: jumping into the pool, rolling over to float, then swimming or climbing out to safety. This is a much smaller class size (4:1) with the parent out of the water. Once they turn 3 or master these skills, they graduate to Starfish or Minnow.",
+  "Starfish 4:1": "This is the 1st of 3 survival levels for kids over 3 where we conquer water hesitation, teach relaxed breath control, and build the independent backfloat so your child has the foundation to stay safe around water.",
+  "Minnow 4:1": "This is the 2nd of 3 survival levels where we lock in the 20-second independent backfloat, teach unassisted rollovers when submerged, and introduce flutter kicks and elementary backstroke to move through the water.",
+  "Turtle 1 4:1": "This is the 3rd of 3 survival levels where we combine all survival skills into one continuous sequence: jump in, roll onto the back, float for 20+ seconds, and swim to safety using elementary strokes and freestyle. Mastering this makes your child a certified 'Safer Swimmer' ready for stroke development.",
+  "Turtle 2 6:1": "This is the 1st of 4 stroke development levels where we transition from survival to technical swimming. This level serves as swim team prep, focusing on perfecting high-elbow freestyle and backstroke with proper rotary side-breathing techniques.",
+  "Shark 1": "This is the 2nd of 4 stroke development levels and continues swim team prep. Now that freestyle and backstroke are mastered, we introduce the breaststroke (pull-breathe-kick-glide) and butterfly (dolphin kick and arm recovery).",
+  "Shark 2": "This is the 3rd of 4 stroke development levels and the final stage of swim team prep. We refine all four competitive strokes (Freestyle, Backstroke, Breaststroke, Butterfly) and introduce flip turns, open turns, and streamlined starts.",
+  "Barracuda": "This is our pre-swim team program divided into three progressive tiers. It functions like a competitive swim team practice where we focus on advanced distance, speed, pace clock intervals, and IM transitions to prepare swimmers to try out for any club or school team.",
+  "Young Adult 1": "Beginner survival level for teens. Focuses on water comfort, independent back floating, and core safety fundamentals.",
+  "Young Adult 2": "Moves from survival basics into stroke mechanics, building continuous freestyle, backstroke, and aerobic stamina.",
+  "Young Adult 3": "Advanced teen level refining all four strokes, starts, turns, and endurance for fitness or competitive teams.",
+  "Adult 1": "Beginner survival level for adults. Focuses on conquering hesitation, breath control, and independent back floating in a supportive setting.",
+  "Adult 2": "Transitions from survival into stroke development, focusing on continuous freestyle and backstroke for fitness and leisure.",
+  "Adult 3": "Advanced adult swimming for stroke refinement, flip turns, endurance lap swimming, and triathlon training.",
+  "Dolphin": "This is our specialized program for swimmers with auxiliary or sensory needs. We focus on water acclimation and survival skills at the student's own pace. Offered as a private or semi-private lesson to ensure the highest safety and progress."
 };
 
 interface QuestionDef {
