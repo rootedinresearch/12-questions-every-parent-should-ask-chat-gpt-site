@@ -479,6 +479,114 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
   return null;
 }
 
+interface UnifiedHeroQuestion {
+  title: string;
+  subtitle: string;
+  isComplete: boolean;
+  stepNum: number;
+  totalSteps: number;
+  activeKey: keyof Swimmer | "complete";
+  swimmerKeys: Record<string, keyof Swimmer | "complete">;
+}
+
+function getUnifiedHeroQuestion(swimmers: Swimmer[]): UnifiedHeroQuestion {
+  const pending = swimmers.filter(s => !isPlacementComplete(s) && s.ageGroup !== "dolphin");
+  if (pending.length === 0) {
+    return {
+      title: "Placement Levels Complete!",
+      subtitle: "Review your starting level estimates below or proceed to choose your preferred location & days.",
+      isComplete: true,
+      stepNum: 0,
+      totalSteps: 0,
+      activeKey: "complete",
+      swimmerKeys: {}
+    };
+  }
+
+  // Precedence list of screening stages
+  const STAGE_ORDER: Array<{
+    key: keyof Swimmer;
+    collectiveTitle: string;
+    stepNum: number;
+    totalSteps: number;
+  }> = [
+    { key: "adaptive", collectiveTitle: "Do any swimmers need a modified or adaptive lesson?", stepNum: 1, totalSteps: 6 },
+    { key: "firstProgram", collectiveTitle: "Is this their first time in structured swim lessons?", stepNum: 2, totalSteps: 6 },
+    { key: "comfortable", collectiveTitle: "Are they comfortable in the water and able to submerge their head?", stepNum: 3, totalSteps: 6 },
+    { key: "floatUnassisted", collectiveTitle: "Can they float on their back unassisted without a life vest?", stepNum: 4, totalSteps: 6 },
+    { key: "separateCaregiver", collectiveTitle: "Can they separate from parent/caregiver and work directly with instructors?", stepNum: 4, totalSteps: 6 },
+    { key: "faceInWater", collectiveTitle: "Can they put their face in the water and hold their breath?", stepNum: 4, totalSteps: 6 },
+    { key: "jumpRollFloat", collectiveTitle: "Are they able to jump in, roll over and float without assistance?", stepNum: 5, totalSteps: 6 },
+    { key: "swimTenYardsSideBreath", collectiveTitle: "Can they swim 10 yards of freestyle and backstroke with face in water & side breath?", stepNum: 5, totalSteps: 6 },
+    { key: "treadMinute", collectiveTitle: "Can they tread water for 1 minute?", stepNum: 5, totalSteps: 6 },
+    { key: "waitTurn", collectiveTitle: "Can they sit on the edge of the pool and wait independently for their turn?", stepNum: 5, totalSteps: 6 },
+    { key: "swimFreestyleBackstroke", collectiveTitle: "Can they swim freestyle and backstroke with their arms out of the water?", stepNum: 6, totalSteps: 6 },
+  ];
+
+  // Find active stage: first stage where at least one pending swimmer has it as their current question
+  let activeStage = STAGE_ORDER[0];
+  let found = false;
+
+  for (const stage of STAGE_ORDER) {
+    const hasPendingSwimmerForStage = pending.some(s => {
+      const q = getNextQuestion(s);
+      return q && q.key === stage.key;
+    });
+    if (hasPendingSwimmerForStage) {
+      activeStage = stage;
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) {
+    const firstPendingQ = getNextQuestion(pending[0]);
+    if (firstPendingQ) {
+      const matchingStage = STAGE_ORDER.find(st => st.key === firstPendingQ.key);
+      if (matchingStage) activeStage = matchingStage;
+    }
+  }
+
+  const activeKey = activeStage.key;
+
+  // Build map of what question key each pending swimmer is answering in this round
+  const swimmerKeys: Record<string, keyof Swimmer> = {};
+  pending.forEach(s => {
+    const nextQ = getNextQuestion(s);
+    if (nextQ && nextQ.key === activeKey) {
+      swimmerKeys[s.id] = activeKey;
+    } else if (s[activeKey] !== undefined && s[activeKey] !== "") {
+      swimmerKeys[s.id] = activeKey;
+    } else if (nextQ) {
+      swimmerKeys[s.id] = nextQ.key;
+    }
+  });
+
+  const swimmersOnActive = pending.filter(s => swimmerKeys[s.id] === activeKey);
+  const singlePending = swimmersOnActive.length === 1 || pending.length === 1;
+  const rawName = singlePending && pending[0]?.firstName ? pending[0].firstName.trim() : "";
+
+  let title = activeStage.collectiveTitle;
+  let subtitle = singlePending && rawName ? `Answering for ${rawName}:` : "Select Yes or No for each swimmer below:";
+
+  if (singlePending && rawName) {
+    const singleQ = getNextQuestion(pending[0]);
+    if (singleQ) {
+      title = singleQ.text;
+    }
+  }
+
+  return {
+    title,
+    subtitle,
+    isComplete: false,
+    stepNum: activeStage.stepNum,
+    totalSteps: activeStage.totalSteps,
+    activeKey,
+    swimmerKeys
+  };
+}
+
 function startingLevel(swimmer: Swimmer): string {
   if (swimmer.placementMode === "known" && swimmer.selectedLevel) {
     return swimmer.selectedLevel;
@@ -1307,19 +1415,25 @@ export default function HoldForm() {
       });
   }
 
+  const [expandedNearbyIndex, setExpandedNearbyIndex] = useState<number | null>(null);
+
   interface CoordinatedMatch {
     type: "same-time" | "back-to-back" | "same-day" | "individual";
     day: string;
     timeLabel: string;
     locationName: string;
+    locationCode: string;
     classes: { swimmerName: string; level: string; classObj: JackrabbitClass }[];
     score: number;
   }
 
-  const coordinatedMatches = useMemo<CoordinatedMatch[]>(() => {
-    if (openings.length === 0) return [];
-    
-    const matches: CoordinatedMatch[] = [];
+  function findMatchesForLocationList(
+    targetLocIds: string[],
+    daysRestrict: string[],
+    strictDays: boolean
+  ): CoordinatedMatch[] {
+    if (openings.length === 0 || swimmers.length === 0) return [];
+
     const daysOfWeek = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
     const dayLabels: Record<string, string> = {
       mon: "Monday",
@@ -1333,18 +1447,38 @@ export default function HoldForm() {
 
     const swimmersWithFilteredClasses = swimmers.map((swimmer, idx) => {
       const swimmerLevel = startingLevel(swimmer);
-      const locationsArray = swimmer.location ? swimmer.location.split(",").filter(Boolean) : [];
       
       const matchedClasses = openings.filter(c => {
         const levelMatch = matchClassLevel(c, swimmerLevel);
-        const dayLocMatch = matchDaysAndLocation(c, locationsArray, familySelectedLocationDays);
+        const locId = getLocationIdFromCode(c.location_code);
+        if (!locId || !targetLocIds.includes(locId)) return false;
+
+        if (strictDays && daysRestrict.length > 0) {
+          const locDaysForThisLoc = daysRestrict
+            .filter(item => item.startsWith(locId + ":"))
+            .map(item => item.split(":")[1].toLowerCase());
+
+          if (locDaysForThisLoc.length > 0) {
+            const m = c.meeting_days || {};
+            const daysMap: Record<string, boolean> = {
+              monday: m.mon,
+              tuesday: m.tue,
+              wednesday: m.wed,
+              thursday: m.thu,
+              friday: m.fri,
+              saturday: m.sat,
+              sunday: m.sun
+            };
+            if (!locDaysForThisLoc.some(d => daysMap[d])) return false;
+          }
+        }
         
         const name = (c.name || "").toLowerCase();
         const room = (c.room || "").toLowerCase();
         const isPlaceholder = room.includes("future") || room.includes("hold") || room.includes("run") || name.includes("future") || name.includes("available for any lesson") || name.includes("manager on duty") || name.includes("staff meeting") || name.includes("convenience fee");
         const hasOpenings = getOpeningsCount(c) >= 1;
         
-        return levelMatch && dayLocMatch && !isPlaceholder && hasOpenings;
+        return levelMatch && !isPlaceholder && hasOpenings;
       });
 
       return {
@@ -1355,130 +1489,167 @@ export default function HoldForm() {
     });
 
     const dayWeight = { "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6, "Sunday": 7 };
+    const matches: CoordinatedMatch[] = [];
 
     if (swimmers.length === 1) {
       const { swimmer, defaultName, matchedClasses } = swimmersWithFilteredClasses[0];
       matchedClasses.forEach(c => {
         const days = Object.keys(c.meeting_days).filter(k => c.meeting_days[k as keyof typeof c.meeting_days]);
+        const locId = getLocationIdFromCode(c.location_code);
+        const locObj = LOCATIONS.find(l => l.id === locId);
+        const friendlyLocName = locObj ? `${locObj.name} (${locObj.detail})` : (c.location || "");
+
         days.forEach(d => {
           matches.push({
             type: "individual",
             day: dayLabels[d] || d,
             timeLabel: formatTime12h(c.start_time),
-            locationName: c.location_name || c.location || "",
+            locationName: friendlyLocName,
+            locationCode: c.location_code,
             classes: [{ swimmerName: defaultName, level: startingLevel(swimmer), classObj: c }],
             score: 10
           });
         });
       });
-      return matches.sort((a, b) => {
-        const dayA = dayWeight[a.day as keyof typeof dayWeight] || 0;
-        const dayB = dayWeight[b.day as keyof typeof dayWeight] || 0;
-        if (dayA !== dayB) return dayA - dayB;
-        const timeA = parseTimeToMinutes(a.classes[0].classObj.start_time);
-        const timeB = parseTimeToMinutes(b.classes[0].classObj.start_time);
-        return timeA - timeB;
-      }).slice(0, 20);
+    } else {
+      targetLocIds.forEach(locId => {
+        const locObj = LOCATIONS.find(l => l.id === locId);
+        const friendlyLocName = locObj ? `${locObj.name} (${locObj.detail})` : locId;
+        const targetLocCode = locId === "grandPrairie" ? "LAFGP" : (locId === "arlington" ? "LAFLITT" : "MAN24H");
+
+        daysOfWeek.forEach(dayKey => {
+          const swimmerClassesAtSlot = swimmersWithFilteredClasses.map(s => {
+            return {
+              swimmer: s.swimmer,
+              defaultName: s.defaultName,
+              classes: s.matchedClasses.filter(c => c.location_code === targetLocCode && c.meeting_days[dayKey as keyof typeof c.meeting_days])
+            };
+          });
+
+          if (swimmers.length === 2) {
+            const s1 = swimmerClassesAtSlot[0];
+            const s2 = swimmerClassesAtSlot[1];
+
+            s1.classes.forEach(c1 => {
+              s2.classes.forEach(c2 => {
+                if (c1.id === c2.id && getOpeningsCount(c1) < 2) return;
+
+                const t1 = parseTimeToMinutes(c1.start_time);
+                const t2 = parseTimeToMinutes(c2.start_time);
+                
+                if (t1 === t2) {
+                  matches.push({
+                    type: "same-time",
+                    day: dayLabels[dayKey],
+                    timeLabel: formatTime12h(c1.start_time),
+                    locationName: friendlyLocName,
+                    locationCode: targetLocCode,
+                    classes: [
+                      { swimmerName: s1.defaultName, level: startingLevel(s1.swimmer), classObj: c1 },
+                      { swimmerName: s2.defaultName, level: startingLevel(s2.swimmer), classObj: c2 }
+                    ],
+                    score: 100
+                  });
+                } else if (Math.abs(t1 - t2) === 30) {
+                  matches.push({
+                    type: "back-to-back",
+                    day: dayLabels[dayKey],
+                    timeLabel: (t1 <= t2 ? formatTime12h(c1.start_time) + " & " + formatTime12h(c2.start_time) : formatTime12h(c2.start_time) + " & " + formatTime12h(c1.start_time)),
+                    locationName: friendlyLocName,
+                    locationCode: targetLocCode,
+                    classes: t1 <= t2 ? [
+                      { swimmerName: s1.defaultName, level: startingLevel(s1.swimmer), classObj: c1 },
+                      { swimmerName: s2.defaultName, level: startingLevel(s2.swimmer), classObj: c2 }
+                    ] : [
+                      { swimmerName: s2.defaultName, level: startingLevel(s2.swimmer), classObj: c2 },
+                      { swimmerName: s1.defaultName, level: startingLevel(s1.swimmer), classObj: c1 }
+                    ],
+                    score: 50
+                  });
+                }
+              });
+            });
+          } else if (swimmers.length >= 3) {
+            const s1 = swimmerClassesAtSlot[0];
+            const s2 = swimmerClassesAtSlot[1];
+            const s3 = swimmerClassesAtSlot[2];
+
+            s1.classes.forEach(c1 => {
+              s2.classes.forEach(c2 => {
+                s3.classes.forEach(c3 => {
+                  const t1 = parseTimeToMinutes(c1.start_time);
+                  const t2 = parseTimeToMinutes(c2.start_time);
+                  const t3 = parseTimeToMinutes(c3.start_time);
+                  if (t1 === t2 && t2 === t3) {
+                    matches.push({
+                      type: "same-time",
+                      day: dayLabels[dayKey],
+                      timeLabel: formatTime12h(c1.start_time),
+                      locationName: friendlyLocName,
+                      locationCode: targetLocCode,
+                      classes: [
+                        { swimmerName: s1.defaultName, level: startingLevel(s1.swimmer), classObj: c1 },
+                        { swimmerName: s2.defaultName, level: startingLevel(s2.swimmer), classObj: c2 },
+                        { swimmerName: s3.defaultName, level: startingLevel(s3.swimmer), classObj: c3 }
+                      ],
+                      score: 120
+                    });
+                  } else if (Math.max(t1, t2, t3) - Math.min(t1, t2, t3) <= 60) {
+                    matches.push({
+                      type: "back-to-back",
+                      day: dayLabels[dayKey],
+                      timeLabel: formatTime12h(Math.min(t1, t2, t3) + "") + " - " + formatTime12h(Math.max(t1, t2, t3) + ""),
+                      locationName: friendlyLocName,
+                      locationCode: targetLocCode,
+                      classes: [
+                        { swimmerName: s1.defaultName, level: startingLevel(s1.swimmer), classObj: c1 },
+                        { swimmerName: s2.defaultName, level: startingLevel(s2.swimmer), classObj: c2 },
+                        { swimmerName: s3.defaultName, level: startingLevel(s3.swimmer), classObj: c3 }
+                      ],
+                      score: 60
+                    });
+                  }
+                });
+              });
+            });
+          }
+        });
+      });
     }
 
-    const locCodes = ["LAFLITT", "LAFGP", "MAN24H"];
-    locCodes.forEach(locCode => {
-      const locName = locCode === "LAFGP" ? "Grand Prairie" : (locCode === "LAFLITT" ? "Arlington" : "Mansfield");
-      
-      daysOfWeek.forEach(dayKey => {
-        const swimmerClassesAtSlot = swimmersWithFilteredClasses.map(s => {
-          return {
-            swimmer: s.swimmer,
-            defaultName: s.defaultName,
-            classes: s.matchedClasses.filter(c => c.location_code === locCode && c.meeting_days[dayKey as keyof typeof c.meeting_days])
-          };
-        });
-
-        if (swimmers.length === 2) {
-          const s1 = swimmerClassesAtSlot[0];
-          const s2 = swimmerClassesAtSlot[1];
-
-          s1.classes.forEach(c1 => {
-            s2.classes.forEach(c2 => {
-              // If both swimmers are placed into the exact same class, ensure there are at least 2 openings!
-              if (c1.id === c2.id && getOpeningsCount(c1) < 2) {
-                return;
-              }
-
-              const t1 = parseTimeToMinutes(c1.start_time);
-              const t2 = parseTimeToMinutes(c2.start_time);
-              
-              if (t1 === t2) {
-                matches.push({
-                  type: "same-time",
-                  day: dayLabels[dayKey],
-                  timeLabel: formatTime12h(c1.start_time),
-                  locationName: locName,
-                  classes: [
-                    { swimmerName: s1.defaultName, level: startingLevel(s1.swimmer), classObj: c1 },
-                    { swimmerName: s2.defaultName, level: startingLevel(s2.swimmer), classObj: c2 }
-                  ],
-                  score: 100
-                });
-              } else if (Math.abs(t1 - t2) === 30) {
-                matches.push({
-                  type: "back-to-back",
-                  day: dayLabels[dayKey],
-                  timeLabel: (t1 <= t2 ? formatTime12h(c1.start_time) + " & " + formatTime12h(c2.start_time) : formatTime12h(c2.start_time) + " & " + formatTime12h(c1.start_time)),
-                  locationName: locName,
-                  classes: t1 <= t2 ? [
-                    { swimmerName: s1.defaultName, level: startingLevel(s1.swimmer), classObj: c1 },
-                    { swimmerName: s2.defaultName, level: startingLevel(s2.swimmer), classObj: c2 }
-                  ] : [
-                    { swimmerName: s2.defaultName, level: startingLevel(s2.swimmer), classObj: c2 },
-                    { swimmerName: s1.defaultName, level: startingLevel(s1.swimmer), classObj: c1 }
-                  ],
-                  score: 50
-                });
-              }
-            });
-          });
-        }
-      });
-    });
-
-    // Slot-level deduplication: guarantees at most ONE match card per unique Location + Day + Time + Type
+    // Deduplicate
     const slotMap = new Map<string, CoordinatedMatch>();
-
     matches.forEach(m => {
       const slotKey = `${m.locationName}|${m.day}|${m.timeLabel}|${m.type}`;
       const totalOpenings = m.classes.reduce((sum, c) => sum + getOpeningsCount(c.classObj), 0);
       const existing = slotMap.get(slotKey);
-      
-      if (!existing) {
+      if (!existing || totalOpenings > existing.classes.reduce((sum, c) => sum + getOpeningsCount(c.classObj), 0)) {
         slotMap.set(slotKey, m);
-      } else {
-        const existingOpenings = existing.classes.reduce((sum, c) => sum + getOpeningsCount(c.classObj), 0);
-        if (totalOpenings > existingOpenings) {
-          slotMap.set(slotKey, m);
-        }
       }
     });
 
-    const uniqueMatches = Array.from(slotMap.values());
-
-    return uniqueMatches.sort((a, b) => {
+    return Array.from(slotMap.values()).sort((a, b) => {
       const dayA = dayWeight[a.day as keyof typeof dayWeight] || 0;
       const dayB = dayWeight[b.day as keyof typeof dayWeight] || 0;
       if (dayA !== dayB) return dayA - dayB;
-
-      const getMinTime = (m: CoordinatedMatch) => {
-        const times = m.classes.map(c => parseTimeToMinutes(c.classObj.start_time));
-        return Math.min(...times);
-      };
-      const timeA = getMinTime(a);
-      const timeB = getMinTime(b);
+      const timeA = parseTimeToMinutes(a.classes[0].classObj.start_time);
+      const timeB = parseTimeToMinutes(b.classes[0].classObj.start_time);
       if (timeA !== timeB) return timeA - timeB;
+      return b.score - a.score;
+    });
+  }
 
-      if (b.score !== a.score) return b.score - a.score;
-      return a.timeLabel.localeCompare(b.timeLabel);
-    }).slice(0, 20);
-  }, [swimmers, openings, familySelectedLocationDays]);
+  const primaryMatches = useMemo<CoordinatedMatch[]>(() => {
+    const selected = familyLocationsArray.length > 0 ? familyLocationsArray : ["mansfield", "arlington", "grandPrairie"];
+    return findMatchesForLocationList(selected, familySelectedLocationDays, true).slice(0, 10);
+  }, [swimmers, openings, familyLocationsArray, familySelectedLocationDays]);
+
+  const nearbyMatches = useMemo<CoordinatedMatch[]>(() => {
+    if (familyLocationsArray.length === 0) return [];
+    const otherLocIds = LOCATIONS.map(l => l.id).filter(id => !familyLocationsArray.includes(id));
+    if (otherLocIds.length === 0) return [];
+    return findMatchesForLocationList(otherLocIds, [], false).slice(0, 8);
+  }, [swimmers, openings, familyLocationsArray]);
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -1530,6 +1701,85 @@ export default function HoldForm() {
           </div>
         ))}
       </div>
+
+      {/* Persistent Shopping Cart & Live Pricing Top Right Widget */}
+      {swimmers.length > 0 && (
+        <div
+          className="persistent-cart-bar"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'linear-gradient(135deg, #102774 0%, #001f5c 100%)',
+            color: '#ffffff',
+            padding: '12px 18px',
+            borderRadius: '16px',
+            margin: '18px 0',
+            boxShadow: '0 6px 18px rgba(16, 39, 116, 0.12)',
+            flexWrap: 'wrap',
+            gap: '12px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: '10px',
+                background: 'rgba(255, 255, 255, 0.15)',
+                display: 'grid',
+                placeItems: 'center',
+                flexShrink: 0,
+                color: '#ffffff'
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="9" cy="21" r="1"></circle>
+                <circle cx="20" cy="21" r="1"></circle>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+              </svg>
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <strong style={{ fontSize: '13.5px', fontWeight: '850', color: '#ffffff' }}>
+                  {swimmers.length} {swimmers.length === 1 ? 'Swimmer' : 'Swimmers'}
+                </strong>
+                <span
+                  style={{
+                    background: '#e51d3b',
+                    color: '#ffffff',
+                    fontSize: '10px',
+                    fontWeight: '900',
+                    padding: '2px 7px',
+                    borderRadius: '99px',
+                    letterSpacing: '0.03em'
+                  }}
+                >
+                  {swimmers.length} {swimmers.length === 1 ? 'CLASS' : 'CLASSES'}
+                </span>
+              </div>
+              <div style={{ fontSize: '11px', color: '#93c5fd', fontWeight: '600' }}>
+                {quotePricing.items.filter(i => i.siblingDiscount > 0).length > 0
+                  ? "10% sibling discount included"
+                  : "Flat monthly subscription"}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
+              <span style={{ fontSize: '11px', color: '#93c5fd', fontWeight: '700' }}>Ongoing Tuition:</span>
+              <strong style={{ fontSize: '17px', fontWeight: '900', color: '#ffffff' }}>
+                ${quotePricing.totalTuition.toFixed(2)}
+              </strong>
+              <span style={{ fontSize: '10.5px', color: '#cbd5e1' }}>/mo</span>
+            </div>
+            <span style={{ fontSize: '11px', color: '#fca5a5', fontWeight: '750' }}>
+              ${quotePricing.firstMonthTotal.toFixed(2)} total due today
+            </span>
+          </div>
+        </div>
+      )}
 
       {step === 1 && (
         <div className="quote-calculator-container">
@@ -1652,22 +1902,22 @@ export default function HoldForm() {
           </div>
 
           <div className="quote-right-panel">
-            <h3 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--navy)', marginBottom: '16px' }}>Tuition & Enrollment Summary</h3>
+            <h3 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--navy)', marginBottom: '16px' }}>Tuition &amp; Enrollment Summary</h3>
             
-            <div className="quote-table-wrapper" style={{ border: '1px solid #eef2ff', borderRadius: '12px', overflow: 'hidden', marginBottom: '24px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
+            <div className="quote-table-wrapper">
+              <table className="quote-table">
                 <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #eef2ff', color: 'var(--muted)', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    <th style={{ padding: '8px 12px' }}>Line Item</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Original</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Discounts</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Final</th>
+                  <tr>
+                    <th className="quote-th quote-th-item">Line Item</th>
+                    <th className="quote-th quote-th-orig">Original</th>
+                    <th className="quote-th quote-th-disc">Discounts</th>
+                    <th className="quote-th quote-th-final">Final</th>
                   </tr>
                 </thead>
                 <tbody>
                   {quotePricing.items.length === 0 ? (
                     <tr>
-                      <td colSpan={4} style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)', fontSize: '12px' }}>
+                      <td colSpan={4} className="quote-td-empty">
                         No swimmers selected
                       </td>
                     </tr>
@@ -1676,115 +1926,112 @@ export default function HoldForm() {
                     const isStandard = item.pace === "standard";
                     const isUnlimited = item.pace === "unlimited";
                     const isPrivate = item.pace === "dolphin_private";
-                    
-                    const class1PaceLabel = isDolphin ? "Foundation Slot (Dolphin)" : "Foundation Slot";
-                    const class2PaceLabel = isPrivate ? "Private Surcharge" : (isStandard ? "Bundle slot (Standard pace)" : "Unlimited Surcharge");
 
                     return (
                       <Fragment key={item.swimmerId}>
-                        <tr style={{ background: '#f1f5f9' }}>
-                          <td colSpan={4} style={{ padding: '6px 12px', fontWeight: '850', color: 'var(--navy)', textTransform: 'uppercase', fontSize: '9px', letterSpacing: '0.04em' }}>
-                            <span style={{ color: '#c8102e', marginRight: '6px' }}>●</span> {AGE_GROUPS.find(g => g.id === item.ageGroup)?.label || ("Swimmer " + (idx + 1))} — Tuition Breakdown
+                        <tr className="quote-group-row">
+                          <td colSpan={4} className="quote-breakdown-hdr">
+                            <span className="quote-hdr-bullet">●</span> {AGE_GROUPS.find(g => g.id === item.ageGroup)?.label || ("Swimmer " + (idx + 1))} — Tuition Breakdown
                           </td>
                         </tr>
                         {isDolphin ? (
-                          <tr style={{ borderBottom: '1px solid #eef2ff' }}>
-                            <td style={{ padding: '10px 12px' }}>
-                              <strong style={{ display: 'block', color: 'var(--navy)' }}>
-                                {isPrivate ? "Adaptive Private Lesson (1x/wk)" : "Adaptive Semi-Private Lesson (1x/wk)"}
+                          <tr className="quote-item-row">
+                            <td className="quote-td quote-td-item">
+                              <strong className="quote-item-title">
+                                {isPrivate ? "Adaptive Private (1x/wk)" : "Adaptive Semi-Private (1x/wk)"}
                               </strong>
-                              <span style={{ color: 'var(--muted)', fontSize: '9px' }}>
-                                {isPrivate ? "1-on-1 specialized adaptive lesson" : "Small group adaptive lesson (Dolphin)"}
+                              <span className="quote-item-sub">
+                                {isPrivate ? "1-on-1 adaptive lesson" : "Small group adaptive"}
                               </span>
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>${item.baseRate.toFixed(2)}</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                            <td className="quote-td quote-td-orig">${item.baseRate.toFixed(2)}</td>
+                            <td className="quote-td quote-td-disc">
                               {item.siblingDiscount > 0 ? (
-                                <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px' }}>
+                                <span className="quote-discount-badge badge-sibling">
                                   Sibling (10%): -${item.siblingDiscount.toFixed(2)}
                                 </span>
                               ) : "-"}
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.finalRate.toFixed(2)}</td>
+                            <td className="quote-td quote-td-final">${item.finalRate.toFixed(2)}</td>
                           </tr>
                         ) : (
                           <>
-                            <tr style={{ borderBottom: '1px solid #eef2ff' }}>
-                              <td style={{ padding: '10px 12px' }}>
-                                <strong style={{ display: 'block', color: 'var(--navy)' }}>Class 1 Tuition</strong>
-                                <span style={{ color: 'var(--muted)', fontSize: '9px' }}>Foundation Slot</span>
+                            <tr className="quote-item-row">
+                              <td className="quote-td quote-td-item">
+                                <strong className="quote-item-title">Class 1 Tuition</strong>
+                                <span className="quote-item-sub">Foundation Slot</span>
                               </td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>${item.class1Base.toFixed(2)}</td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                              <td className="quote-td quote-td-orig">${item.class1Base.toFixed(2)}</td>
+                              <td className="quote-td quote-td-disc">
                                 {item.siblingDiscount > 0 ? (
-                                  <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px' }}>
+                                  <span className="quote-discount-badge badge-sibling">
                                     Sibling (10%): -${(item.class1Base * 0.1).toFixed(2)}
                                   </span>
                                 ) : "-"}
                               </td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.class1Final.toFixed(2)}</td>
+                              <td className="quote-td quote-td-final">${item.class1Final.toFixed(2)}</td>
                             </tr>
 
                             {(isStandard || isUnlimited) && (
-                              <tr style={{ borderBottom: '1px solid #eef2ff' }}>
-                                <td style={{ padding: '10px 12px' }}>
-                                  <strong style={{ display: 'block', color: 'var(--navy)' }}>Class 2 Tuition</strong>
-                                  <span style={{ color: 'var(--muted)', fontSize: '9px' }}>Bundle slot (Standard pace)</span>
+                              <tr className="quote-item-row">
+                                <td className="quote-td quote-td-item">
+                                  <strong className="quote-item-title">Class 2 Tuition</strong>
+                                  <span className="quote-item-sub">Bundle slot (Standard pace)</span>
                                 </td>
-                                <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>${item.class2Base.toFixed(2)}</td>
-                                <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-end' }}>
+                                <td className="quote-td quote-td-orig">${item.class2Base.toFixed(2)}</td>
+                                <td className="quote-td quote-td-disc">
+                                  <div className="quote-disc-stack">
                                     {item.class2BundleDiscount > 0 && (
-                                      <span style={{ background: '#dcfce7', color: '#15803d', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                                      <span className="quote-discount-badge badge-bundle">
                                         2x/wk Bundle: -${item.class2BundleDiscount.toFixed(2)}
                                       </span>
                                     )}
                                     {item.siblingDiscount > 0 && item.class2BundledRate > 0 && (
-                                      <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                                      <span className="quote-discount-badge badge-sibling">
                                         Sibling (10%): -${(item.class2BundledRate * 0.1).toFixed(2)}
                                       </span>
                                     )}
                                     {item.class2BundleDiscount === 0 && item.siblingDiscount === 0 && "-"}
                                   </div>
                                 </td>
-                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.class2Final.toFixed(2)}</td>
+                                <td className="quote-td quote-td-final">${item.class2Final.toFixed(2)}</td>
                               </tr>
                             )}
 
                             {isUnlimited && (
-                              <tr style={{ borderBottom: '1px solid #eef2ff' }}>
-                                <td style={{ padding: '10px 12px' }}>
-                                  <strong style={{ display: 'block', color: 'var(--navy)' }}>Unlimited Add-On</strong>
-                                  <span style={{ color: 'var(--muted)', fontSize: '9px' }}>Unlimited swimming access</span>
+                              <tr className="quote-item-row">
+                                <td className="quote-td quote-td-item">
+                                  <strong className="quote-item-title">Unlimited Add-On</strong>
+                                  <span className="quote-item-sub">Unlimited swimming</span>
                                 </td>
-                                <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>${item.unlimitedAddonRate.toFixed(2)}</td>
-                                <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                                <td className="quote-td quote-td-orig">${item.unlimitedAddonRate.toFixed(2)}</td>
+                                <td className="quote-td quote-td-disc">
                                   {item.siblingDiscount > 0 ? (
-                                    <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px' }}>
+                                    <span className="quote-discount-badge badge-sibling">
                                       Sibling (10%): -${(item.unlimitedAddonRate * 0.1).toFixed(2)}
                                     </span>
                                   ) : "-"}
                                 </td>
-                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.unlimitedAddonFinal.toFixed(2)}</td>
+                                <td className="quote-td quote-td-final">${item.unlimitedAddonFinal.toFixed(2)}</td>
                               </tr>
                             )}
                           </>
                         )}
 
-                        <tr style={{ borderBottom: '1px solid #eef2ff' }}>
-                          <td style={{ padding: '10px 12px' }}>
-                            <strong style={{ display: 'block', color: 'var(--navy)' }}>Registration Fee</strong>
-                            <span style={{ color: 'var(--muted)', fontSize: '9px' }}>Annual signup / insurance fee</span>
+                        <tr className="quote-item-row">
+                          <td className="quote-td quote-td-item">
+                            <strong className="quote-item-title">Registration Fee</strong>
+                            <span className="quote-item-sub">Annual signup fee</span>
                           </td>
-                          <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--muted)' }}>$49.99</td>
-                          <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                          <td className="quote-td quote-td-orig">$49.99</td>
+                          <td className="quote-td quote-td-disc">
                             {item.registrationDiscount > 0 ? (
-                              <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '8px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px' }}>
-                                Cap Limit Part: -${item.registrationDiscount.toFixed(2)}
+                              <span className="quote-discount-badge badge-cap">
+                                Cap Limit: -${item.registrationDiscount.toFixed(2)}
                               </span>
                             ) : "-"}
                           </td>
-                          <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--navy)' }}>${item.registrationFee.toFixed(2)}</td>
+                          <td className="quote-td quote-td-final">${item.registrationFee.toFixed(2)}</td>
                         </tr>
                       </Fragment>
                     );
@@ -1794,47 +2041,27 @@ export default function HoldForm() {
             </div>
 
             {/* 2-Box Summary: Ongoing Monthly Subscription (First) & Total Due Today (Second) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px', marginTop: '16px' }}>
-              <div style={{
-                background: '#f8fafc',
-                border: '1.5px solid #e2e8f0',
-                borderRadius: '16px',
-                padding: '14px 12px',
-                textAlign: 'center',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                boxShadow: '0 2px 8px rgba(16, 39, 116, 0.04)'
-              }}>
-                <span style={{ fontSize: '10px', fontWeight: '800', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '4px' }}>
+            <div className="quote-summary-boxes">
+              <div className="quote-summary-box monthly-box">
+                <span className="quote-summary-label blue-label">
                   Ongoing Monthly
                 </span>
-                <strong style={{ fontSize: '24px', fontWeight: '900', color: 'var(--navy)', lineHeight: '1.1', display: 'block' }}>
-                  ${quotePricing.totalTuition.toFixed(2)}<span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--muted)' }}>/mo</span>
+                <strong className="quote-summary-amount navy-amount">
+                  ${quotePricing.totalTuition.toFixed(2)}<span className="quote-summary-per">/mo</span>
                 </strong>
-                <span style={{ fontSize: '9px', color: 'var(--muted)', marginTop: '4px', display: 'block' }}>
+                <span className="quote-summary-sub">
                   Tuition starting month 2
                 </span>
               </div>
 
-              <div style={{
-                background: 'linear-gradient(135deg, #fff5f5 0%, #ffeef0 100%)',
-                border: '1.5px solid #fecdd3',
-                borderRadius: '16px',
-                padding: '14px 12px',
-                textAlign: 'center',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                boxShadow: '0 2px 8px rgba(200, 16, 46, 0.08)'
-              }}>
-                <span style={{ fontSize: '10px', fontWeight: '800', color: '#c8102e', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '4px' }}>
+              <div className="quote-summary-box today-box">
+                <span className="quote-summary-label red-label">
                   Total Due Today
                 </span>
-                <strong style={{ fontSize: '24px', fontWeight: '900', color: '#c8102e', lineHeight: '1.1', display: 'block' }}>
+                <strong className="quote-summary-amount red-amount">
                   ${quotePricing.firstMonthTotal.toFixed(2)}
                 </strong>
-                <span style={{ fontSize: '9px', color: 'var(--muted)', marginTop: '4px', display: 'block' }}>
+                <span className="quote-summary-sub">
                   Tuition + Enrollment Fee
                 </span>
               </div>
@@ -1939,159 +2166,364 @@ export default function HoldForm() {
         </>
       )}
 
-      {step === 3 && (
-        <>
-          <div className="form-section-heading">
-            <span>3</span>
-            <div>
-              <p>Placement levels</p>
-              <h2>How comfortable is each swimmer?</h2>
+      {step === 3 && (() => {
+        const heroQ = getUnifiedHeroQuestion(swimmers);
+        const allComplete = swimmers.every(s => isPlacementComplete(s));
+
+        return (
+          <>
+            <div className="form-section-heading">
+              <span>3</span>
+              <div>
+                <p>Placement levels</p>
+                <h2>{allComplete ? "Placement Complete" : "Let's find the right starting level"}</h2>
+              </div>
             </div>
-          </div>
-          <p className="wizard-intro">
-            Answer the questions below to match each swimmer with the correct skill level. Questions update step-by-step as you answer.
-          </p>
 
-          <div
-            className="swimmer-columns-grid"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: swimmers.length === 1 ? '1fr' : swimmers.length === 2 ? '1fr 1fr' : 'repeat(auto-fit, minmax(280px, 1fr))',
-              gap: '20px',
-              alignItems: 'start',
-              marginTop: '20px'
-            }}
-          >
-            {swimmers.map((swimmer, index) => {
-              const isComplete = isPlacementComplete(swimmer);
-              const nextQ = getNextQuestion(swimmer);
-              const level = startingLevel(swimmer);
-
-              return (
-                <div key={swimmer.id} className="swimmer-column-card">
-                  <div className="swimmer-col-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span className="swimmer-col-badge">{index + 1}</span>
-                      <div>
-                        <strong className="swimmer-col-name">{swimmer.firstName || ("Swimmer " + (index + 1))}</strong>
-                        <small className="swimmer-col-age">{AGE_GROUPS.find(g => g.id === swimmer.ageGroup)?.label}</small>
-                      </div>
-                    </div>
-                  </div>
-
-                  {swimmer.ageGroup === "dolphin" ? (
-                    <div className="placement-result-card">
-                      <span className="level-badge-tag">Adaptive Curriculum</span>
-                      <h4 className="level-title">Dolphin</h4>
-                      <p className="level-desc">{LEVEL_DESCRIPTIONS["Dolphin"]}</p>
-                    </div>
-                  ) : (
-                    <div className="assessment-question-flow">
-                      {nextQ ? (
-                        <div className="single-question-card">
-                          <div className="question-meta-row">
-                            <span className="question-step-count">Step {nextQ.stepNum} of {nextQ.totalSteps}</span>
-                            <span className="question-pill-tag">Question</span>
-                          </div>
-                          <h4 className="question-prompt-text">{nextQ.text}</h4>
-
-                          <div className="question-button-pair">
-                            <button
-                              type="button"
-                              className={"choice-btn choice-yes " + (swimmer[nextQ.key] === "yes" ? "selected" : "")}
-                              onClick={() => handleQuestionAnswer(swimmer.id, nextQ.key, "yes")}
-                            >
-                              <span className="btn-icon">✓</span>
-                              <span>Yes</span>
-                            </button>
-                            <button
-                              type="button"
-                              className={"choice-btn choice-no " + (swimmer[nextQ.key] === "no" ? "selected" : "")}
-                              onClick={() => handleQuestionAnswer(swimmer.id, nextQ.key, "no")}
-                            >
-                              <span className="btn-icon">✕</span>
-                              <span>No</span>
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {isComplete && (
-                        <div className="placement-result-card">
-                          <span className="level-badge-tag">✓ Starting Level Estimate</span>
-                          <h4 className="level-title">{getLevelDisplay(level)}</h4>
-                          {getRatio(level) && (
-                            <div
-                              className="ratio-context-banner"
-                              style={{
-                                fontSize: '12px',
-                                fontWeight: '700',
-                                color: '#0056b3',
-                                background: '#eef6ff',
-                                border: '1px solid #d0e4ff',
-                                padding: '6px 10px',
-                                borderRadius: '8px',
-                                margin: '6px 0 10px',
-                                textAlign: 'center'
-                              }}
-                            >
-                              Student to instructor ratio of {getRatio(level)} max in this level.
-                            </div>
-                          )}
-                          <p className="level-desc">{LEVEL_DESCRIPTIONS[level]}</p>
-                          <button
-                            type="button"
-                            className="reanswer-btn"
-                            onClick={() => resetSwimmerQuestions(swimmer.id)}
-                          >
-                            &larr; Back
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {message && <p className="form-error" role="alert">{message}</p>}
-
-          <div className="wizard-actions" style={{ marginTop: '28px' }}>
-            <button type="button" className="wizard-back" onClick={() => setStep(2)}>&larr; Back</button>
-            <button
-              type="button"
-              className={levelsValid ? "wizard-submit" : "wizard-next"}
-              onClick={goToPools}
-              style={levelsValid ? {
-                padding: '16px 36px',
-                borderRadius: '99px',
-                background: 'linear-gradient(180deg, #e51d3b 0%, #c8102e 100%)',
-                color: '#fff',
-                border: '1px solid #b30c26',
-                fontWeight: '900',
-                fontSize: '16px',
-                letterSpacing: '0.01em',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '10px',
-                boxShadow: '0 8px 24px rgba(200, 16, 46, 0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
-                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
-              } : {
-                opacity: 0.7,
-                transition: 'all 0.2s ease'
+            {/* Unified Question Hero Card with key-based slide animation */}
+            <div
+              key={heroQ.activeKey}
+              className="unified-question-card question-slide-animate"
+              style={{
+                background: '#ffffff',
+                border: '1.5px solid #dce4f0',
+                borderRadius: '20px',
+                padding: '24px',
+                boxShadow: '0 6px 20px rgba(16, 39, 116, 0.05)',
+                marginTop: '20px',
+                width: '100%',
+                boxSizing: 'border-box'
               }}
             >
-              <span>Choose Location &amp; Days</span>
-              <svg width={levelsValid ? "18" : "15"} height={levelsValid ? "18" : "15"} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={levelsValid ? "2.4" : "2.2"} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: '6px' }}>
-                <path d="M6 12L10 8L6 4" />
-              </svg>
-            </button>
-          </div>
-        </>
-      )}
+              <div className="question-meta-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span
+                  className="question-pill-tag"
+                  style={{
+                    fontSize: '9px',
+                    fontWeight: '800',
+                    color: 'var(--blue)',
+                    background: '#e0e7ff',
+                    padding: '3px 10px',
+                    borderRadius: '99px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em'
+                  }}
+                >
+                  {allComplete ? "Complete" : `Question ${heroQ.stepNum} of ${heroQ.totalSteps}`}
+                </span>
+                <span
+                  className="question-step-count"
+                  style={{
+                    fontSize: '9px',
+                    fontWeight: '800',
+                    color: 'var(--muted)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em'
+                  }}
+                >
+                  {allComplete ? "All Levels Placed" : "Placement Assessment"}
+                </span>
+              </div>
+
+              <h3
+                className="unified-question-title"
+                style={{
+                  margin: '10px 0 6px',
+                  fontSize: 'clamp(17px, 2.8vw, 22px)',
+                  fontWeight: '850',
+                  color: 'var(--navy)',
+                  lineHeight: '1.3'
+                }}
+              >
+                {heroQ.title}
+              </h3>
+              {heroQ.subtitle && (
+                <p
+                  className="unified-question-subtitle"
+                  style={{
+                    margin: '0 0 20px',
+                    fontSize: '13px',
+                    color: 'var(--muted)',
+                    fontWeight: '600'
+                  }}
+                >
+                  {heroQ.subtitle}
+                </p>
+              )}
+
+              {/* Swimmer Rows List */}
+              <div className="unified-swimmer-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {swimmers.map((swimmer, index) => {
+                  const isComplete = isPlacementComplete(swimmer);
+                  const level = startingLevel(swimmer);
+                  const swimmerName = swimmer.firstName ? swimmer.firstName.trim() : ("Swimmer " + (index + 1));
+                  const isDolphin = swimmer.ageGroup === "dolphin";
+                  const currentKey: keyof Swimmer | "complete" = heroQ.swimmerKeys[swimmer.id] || heroQ.activeKey;
+                  const isKeyForSwimmer = currentKey !== "complete";
+                  const currentAnswer = isKeyForSwimmer ? swimmer[currentKey as keyof Swimmer] : "";
+
+                  return (
+                    <div
+                      key={swimmer.id}
+                      className={"unified-swimmer-row " + (isComplete ? "row-complete" : "row-active")}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '14px 18px',
+                        border: isComplete ? '1.5px solid #86efac' : (currentAnswer ? '1.5px solid #cbd5e1' : '1.5px solid #e2e8f0'),
+                        borderRadius: '16px',
+                        background: isComplete ? 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)' : '#f8fafc',
+                        gap: '14px',
+                        boxSizing: 'border-box',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <div className="unified-swimmer-left" style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                        <span
+                          className="unified-swimmer-badge"
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '10px',
+                            background: 'var(--navy)',
+                            color: '#fff',
+                            fontSize: '13px',
+                            fontWeight: '800',
+                            display: 'grid',
+                            placeItems: 'center',
+                            flex: '0 0 auto'
+                          }}
+                        >
+                          {index + 1}
+                        </span>
+                        <div className="unified-swimmer-info" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                          <strong
+                            className="unified-swimmer-name"
+                            style={{
+                              display: 'block',
+                              fontSize: '14px',
+                              fontWeight: '800',
+                              color: 'var(--navy)',
+                              lineHeight: '1.2'
+                            }}
+                          >
+                            {swimmerName}
+                          </strong>
+                          <span
+                            className="unified-swimmer-age"
+                            style={{
+                              display: 'block',
+                              fontSize: '11px',
+                              color: 'var(--muted)',
+                              fontWeight: '600',
+                              marginTop: '2px'
+                            }}
+                          >
+                            {AGE_GROUPS.find(g => g.id === swimmer.ageGroup)?.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="unified-swimmer-right" style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '0 0 auto' }}>
+                        {isDolphin ? (
+                          <div className="unified-level-pill-wrap" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span
+                              className="unified-level-pill dolphin-pill"
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '99px',
+                                background: '#eff6ff',
+                                border: '1.5px solid #bfdbfe',
+                                color: '#1d4ed8',
+                                fontSize: '12px',
+                                fontWeight: '900'
+                              }}
+                            >
+                              Adaptive Curriculum
+                            </span>
+                            <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--navy)' }}>Dolphin</span>
+                          </div>
+                        ) : isComplete ? (
+                          <div className="unified-level-pill-wrap" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span
+                              className="unified-level-pill"
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '99px',
+                                background: '#dcfce7',
+                                border: '1.5px solid #86efac',
+                                color: '#15803d',
+                                fontSize: '12px',
+                                fontWeight: '900',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              ✓ {getLevelDisplay(level)}
+                            </span>
+                            {getRatio(level) && (
+                              <span
+                                className="unified-ratio-tag"
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  background: '#eef6ff',
+                                  border: '1px solid #d0e4ff',
+                                  color: '#0056b3',
+                                  fontSize: '10px',
+                                  fontWeight: '750',
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                Ratio {getRatio(level)}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              className="unified-reanswer-btn"
+                              onClick={() => resetSwimmerQuestions(swimmer.id)}
+                              style={{
+                                background: 'transparent',
+                                border: '0',
+                                color: 'var(--muted)',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                textDecoration: 'underline',
+                                cursor: 'pointer',
+                                padding: '4px 6px'
+                              }}
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        ) : isKeyForSwimmer ? (
+                          <div className="unified-action-wrap" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div className="unified-btn-pair" style={{ display: 'flex', gap: '8px' }}>
+                              <button
+                                type="button"
+                                className={"unified-choice-btn choice-yes " + (currentAnswer === "yes" ? "selected" : "")}
+                                onClick={() => handleQuestionAnswer(swimmer.id, currentKey as keyof Swimmer, "yes")}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px',
+                                  padding: '10px 18px',
+                                  borderRadius: '12px',
+                                  border: currentAnswer === "yes" ? '1.5px solid #15803d' : '1.5px solid #cbd5e1',
+                                  background: currentAnswer === "yes" ? '#16a34a' : '#ffffff',
+                                  color: currentAnswer === "yes" ? '#ffffff' : 'var(--navy)',
+                                  fontSize: '13px',
+                                  fontWeight: '800',
+                                  cursor: 'pointer',
+                                  boxShadow: currentAnswer === "yes" ? '0 4px 12px rgba(22, 163, 74, 0.25)' : '0 2px 6px rgba(0, 0, 0, 0.04)',
+                                  transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+                                  transform: currentAnswer === "yes" ? 'scale(1.02)' : 'scale(1)'
+                                }}
+                              >
+                                <span className="btn-icon" style={{ fontSize: '13px', fontWeight: '900' }}>✓</span>
+                                <span>Yes</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={"unified-choice-btn choice-no " + (currentAnswer === "no" ? "selected" : "")}
+                                onClick={() => handleQuestionAnswer(swimmer.id, currentKey as keyof Swimmer, "no")}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px',
+                                  padding: '10px 18px',
+                                  borderRadius: '12px',
+                                  border: currentAnswer === "no" ? '1.5px solid #b91c1c' : '1.5px solid #cbd5e1',
+                                  background: currentAnswer === "no" ? '#dc2626' : '#ffffff',
+                                  color: currentAnswer === "no" ? '#ffffff' : 'var(--navy)',
+                                  fontSize: '13px',
+                                  fontWeight: '800',
+                                  cursor: 'pointer',
+                                  boxShadow: currentAnswer === "no" ? '0 4px 12px rgba(220, 38, 38, 0.25)' : '0 2px 6px rgba(0, 0, 0, 0.04)',
+                                  transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+                                  transform: currentAnswer === "no" ? 'scale(1.02)' : 'scale(1)'
+                                }}
+                              >
+                                <span className="btn-icon" style={{ fontSize: '13px', fontWeight: '900' }}>✕</span>
+                                <span>No</span>
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* When all swimmers are complete, display itemized level descriptions */}
+              {allComplete && (
+                <div className="all-placed-summary-grid">
+                  {swimmers.map((swimmer, index) => {
+                    const level = startingLevel(swimmer);
+                    const swimmerName = swimmer.firstName ? swimmer.firstName.trim() : ("Swimmer " + (index + 1));
+                    return (
+                      <div key={swimmer.id} className="placed-swimmer-detail-card">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                          <span className="swimmer-col-badge" style={{ width: '22px', height: '22px', fontSize: '10px' }}>{index + 1}</span>
+                          <strong style={{ fontSize: '13px', color: 'var(--navy)' }}>{swimmerName}</strong>
+                          <span style={{ fontSize: '11px', color: 'var(--muted)' }}>— {getLevelDisplay(level)}</span>
+                        </div>
+                        <p style={{ fontSize: '11px', color: '#4b5563', margin: '0 0 6px', lineHeight: '1.4' }}>
+                          {LEVEL_DESCRIPTIONS[level] || LEVEL_DESCRIPTIONS["Dolphin"]}
+                        </p>
+                        {getRatio(level) && (
+                          <span style={{ fontSize: '10px', fontWeight: '700', color: '#0056b3' }}>
+                            Student to instructor ratio: {getRatio(level)} max
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {message && <p className="form-error" role="alert">{message}</p>}
+
+            <div className="wizard-actions" style={{ marginTop: '28px' }}>
+              <button type="button" className="wizard-back" onClick={() => setStep(2)}>&larr; Back</button>
+              <button
+                type="button"
+                className={levelsValid ? "wizard-submit" : "wizard-next"}
+                onClick={goToPools}
+                style={levelsValid ? {
+                  padding: '16px 36px',
+                  borderRadius: '99px',
+                  background: 'linear-gradient(180deg, #e51d3b 0%, #c8102e 100%)',
+                  color: '#fff',
+                  border: '1px solid #b30c26',
+                  fontWeight: '900',
+                  fontSize: '16px',
+                  letterSpacing: '0.01em',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '10px',
+                  boxShadow: '0 8px 24px rgba(200, 16, 46, 0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
+                  transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+                } : {
+                  opacity: 0.7,
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <span>Choose Location &amp; Days</span>
+                <svg width={levelsValid ? "18" : "15"} height={levelsValid ? "18" : "15"} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={levelsValid ? "2.4" : "2.2"} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: '6px' }}>
+                  <path d="M6 12L10 8L6 4" />
+                </svg>
+              </button>
+            </div>
+          </>
+        );
+      })()}
 
       {step === 4 && (
         <>
@@ -2199,31 +2631,36 @@ export default function HoldForm() {
 
           {/* Referral source section in Step 5 */}
           <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: '16px', padding: '18px 20px', margin: '20px 0' }}>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
               How did you hear about us?
             </label>
-            <select
-              value={referral.source}
-              onChange={(event) => setReferral({ ...referral, source: event.target.value })}
-              style={{
-                width: '100%',
-                padding: '12px 14px',
-                borderRadius: '10px',
-                border: '1.5px solid #dce3ef',
-                fontSize: '13px',
-                color: 'var(--navy)',
-                background: '#fff',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="">Select an option...</option>
-              {REFERRAL_OPTIONS.map((opt) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '8px' }}>
+              {REFERRAL_OPTIONS.map((opt) => {
+                const isSelected = referral.source === opt;
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setReferral(prev => ({ ...prev, source: prev.source === opt ? "" : opt }))}
+                    className={"select-pill-btn " + (isSelected ? "selected" : "")}
+                    style={{
+                      padding: '10px 12px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      borderRadius: '10px',
+                      textAlign: 'center',
+                      lineHeight: '1.3'
+                    }}
+                  >
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
 
             {referral.source === "Referral" && (
-              <div style={{ marginTop: '12px' }}>
+              <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: 'var(--navy)', marginBottom: '4px' }}>
                   Who can we thank for referring you?
                 </label>
@@ -2232,6 +2669,27 @@ export default function HoldForm() {
                   placeholder="Friend or family member's full name"
                   value={referral.friendName}
                   onChange={(event) => setReferral({ ...referral, friendName: event.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1.5px solid #dce3ef',
+                    fontSize: '13px'
+                  }}
+                />
+              </div>
+            )}
+
+            {referral.source === "Other Online Source" && (
+              <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: 'var(--navy)', marginBottom: '4px' }}>
+                  Please specify source (optional):
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Nextdoor, Yelp, Blog, etc."
+                  value={referral.other}
+                  onChange={(event) => setReferral({ ...referral, other: event.target.value })}
                   style={{
                     width: '100%',
                     padding: '10px 14px',
@@ -2275,10 +2733,18 @@ export default function HoldForm() {
           </button>
 
           <div className="coordinated-section">
-            <h3>Class Openings Found</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '850', color: 'var(--navy)' }}>Class Openings Found</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--muted)' }}>
+                  Coordinated times matching your selected location &amp; schedule preferences:
+                </p>
+              </div>
+            </div>
+
             {loadingOpenings ? (
               <p style={{ fontSize: '13px', color: 'var(--muted)' }}>Searching live pool schedules...</p>
-            ) : coordinatedMatches.length === 0 ? (
+            ) : primaryMatches.length === 0 ? (
               <div style={{
                 background: '#f8fafc',
                 border: '1px solid #e2e8f0',
@@ -2288,34 +2754,68 @@ export default function HoldForm() {
               }}>
                 <p style={{ fontSize: '14px', color: 'var(--navy)', fontWeight: '700', marginBottom: '4px' }}>
                   {swimmers.length > 1
-                    ? "No coordinated sibling times found for the selected criteria."
-                    : "No direct matching openings found for the selected schedule."}
+                    ? "No exact coordinated times found for your selected primary days."
+                    : "No direct matching openings found for the selected primary schedule."}
                 </p>
                 <p style={{ fontSize: '13px', color: 'var(--muted)', margin: 0, lineHeight: '1.5' }}>
-                  Our team will help coordinate availability for their 2-class trial. Request scheduling assistance above and we will contact you with custom options.
+                  Our team will help coordinate availability for your 2-class trial. Request scheduling assistance above or check nearby locations below!
                 </p>
               </div>
             ) : (
-              <div className="matches-list">
-                {coordinatedMatches.slice(0, 6).map((match, idx) => (
-                  <article className="match-card" key={idx}>
-                    <div className="match-header">
+              <div className="matches-list" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {primaryMatches.map((match, idx) => (
+                  <article className="match-card" key={idx} style={{ padding: '18px 20px' }}>
+                    <div className="match-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
                       <div>
-                        <span className="match-title">{match.day}s at {match.timeLabel}</span>
-                        <div className="match-location">{match.locationName}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span className="match-title" style={{ fontSize: '16px', fontWeight: '850', color: 'var(--navy)' }}>
+                            {match.day}s at {match.timeLabel}
+                          </span>
+                          {match.type === "same-time" && <span className="match-badge badge-same-time">Same Time</span>}
+                          {match.type === "back-to-back" && <span className="match-badge badge-back-to-back">Back-to-Back</span>}
+                          {match.type === "same-day" && <span className="match-badge badge-same-day">Same Day</span>}
+                        </div>
+                        <div className="match-location" style={{ fontSize: '12.5px', color: 'var(--muted)', fontWeight: '600', marginTop: '2px' }}>
+                          {match.locationName}
+                        </div>
                       </div>
-                      {match.type === "same-time" && <span className="match-badge badge-same-time">Same Time</span>}
-                      {match.type === "back-to-back" && <span className="match-badge badge-back-to-back">Back-to-Back</span>}
-                      {match.type === "same-day" && <span className="match-badge badge-same-day">Same Day</span>}
+
+                      {/* Top Right Book Trial Button */}
+                      <a
+                        className="register-btn"
+                        href={getPreciseRegisterUrl(
+                          match.classes[0].classObj,
+                          match.classes[0].level,
+                          match.classes[0].classObj.location_code,
+                          family,
+                          referral,
+                          match.classes[0].swimmerName,
+                          swimmers,
+                          buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
+                        )}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          padding: '8px 18px',
+                          fontSize: '12.5px',
+                          fontWeight: '800',
+                          borderRadius: '99px',
+                          whiteSpace: 'nowrap',
+                          boxShadow: '0 4px 12px rgba(229, 29, 59, 0.25)'
+                        }}
+                      >
+                        Book 2-Class Trial ↗
+                      </a>
                     </div>
-                    <div className="match-classes">
+
+                    <div className="match-classes" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {match.classes.map((cls, cIdx) => {
                         const openingsCount = getOpeningsCount(cls.classObj);
                         return (
-                          <div className="match-class-item" key={cIdx}>
+                          <div className="match-class-item" key={cIdx} style={{ background: '#f8fafc', padding: '10px 14px', borderRadius: '10px', border: '1px solid #edf2f7' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                              <span className="class-info-line">
-                                <strong>{cls.swimmerName}</strong>: {cls.level.replace(/\s*\d+:\d+$/, "")} with Coach {getInstructorName(cls.classObj)}
+                              <span className="class-info-line" style={{ fontSize: '13px', color: 'var(--navy)' }}>
+                                <strong style={{ color: 'var(--navy)' }}>{cls.swimmerName}</strong>: {cls.level.replace(/\s*\d+:\d+$/, "")} with Coach {getInstructorName(cls.classObj)}
                               </span>
                               <span style={{
                                 fontSize: '11.5px',
@@ -2339,29 +2839,139 @@ export default function HoldForm() {
                         );
                       })}
                     </div>
-
-                    <div className="match-card-footer" style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end' }}>
-                      <a
-                        className="register-btn"
-                        href={getPreciseRegisterUrl(
-                          match.classes[0].classObj,
-                          match.classes[0].level,
-                          match.classes[0].classObj.location_code,
-                          family,
-                          referral,
-                          match.classes[0].swimmerName,
-                          swimmers,
-                          buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
-                        )}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ padding: '9px 20px', fontSize: '12.5px' }}
-                      >
-                        Book 2-Class Trial ↗
-                      </a>
-                    </div>
                   </article>
                 ))}
+              </div>
+            )}
+
+            {/* Other Nearby Locations Section */}
+            {nearbyMatches.length > 0 && (
+              <div className="nearby-locations-section" style={{ marginTop: '28px', paddingTop: '22px', borderTop: '2px dashed #e2e8f0' }}>
+                <div style={{ marginBottom: '14px' }}>
+                  <span style={{ fontSize: '10.5px', fontWeight: '850', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--blue)', background: '#eff6ff', padding: '4px 10px', borderRadius: '99px' }}>
+                    Alternate Options
+                  </span>
+                  <h3 style={{ fontSize: '17px', fontWeight: '850', color: 'var(--navy)', margin: '8px 0 3px' }}>
+                    Other Nearby Locations
+                  </h3>
+                  <p style={{ fontSize: '12px', color: 'var(--muted)', margin: 0 }}>
+                    Looking for different days or times? Coordinated openings at other DFW British Swim School pools:
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {nearbyMatches.map((match, idx) => {
+                    const isExpanded = expandedNearbyIndex === idx;
+                    return (
+                      <article
+                        className="match-card"
+                        key={`nearby-${idx}`}
+                        style={{
+                          background: isExpanded ? '#ffffff' : '#f8fafc',
+                          borderColor: isExpanded ? 'var(--blue)' : '#e2e8f0',
+                          padding: '14px 18px',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <strong style={{ fontSize: '14.5px', color: 'var(--navy)' }}>
+                                {match.day}s at {match.timeLabel}
+                              </strong>
+                              {match.type === "same-time" && <span className="match-badge badge-same-time" style={{ fontSize: '10px', padding: '2px 7px' }}>Same Time</span>}
+                              {match.type === "back-to-back" && <span className="match-badge badge-back-to-back" style={{ fontSize: '10px', padding: '2px 7px' }}>Back-to-Back</span>}
+                            </div>
+                            <div style={{ fontSize: '11.5px', color: 'var(--muted)', fontWeight: '600', marginTop: '2px' }}>
+                              📍 {match.locationName}
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedNearbyIndex(isExpanded ? null : idx)}
+                              style={{
+                                background: isExpanded ? '#eff6ff' : '#ffffff',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: '8px',
+                                padding: '6px 12px',
+                                fontSize: '11.5px',
+                                fontWeight: '750',
+                                color: 'var(--navy)',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              {isExpanded ? 'Hide Classes ▲' : 'View Classes ▼'}
+                            </button>
+
+                            <a
+                              className="register-btn"
+                              href={getPreciseRegisterUrl(
+                                match.classes[0].classObj,
+                                match.classes[0].level,
+                                match.classes[0].classObj.location_code,
+                                family,
+                                referral,
+                                match.classes[0].swimmerName,
+                                swimmers,
+                                buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
+                              )}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                padding: '6px 14px',
+                                fontSize: '11.5px',
+                                fontWeight: '800',
+                                borderRadius: '99px',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              Book 2-Class Trial ↗
+                            </a>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="match-classes" style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #edf2f7', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {match.classes.map((cls, cIdx) => {
+                              const openingsCount = getOpeningsCount(cls.classObj);
+                              return (
+                                <div className="match-class-item" key={cIdx} style={{ background: '#ffffff', padding: '8px 12px', borderRadius: '8px', border: '1px solid #edf2f7' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <span className="class-info-line" style={{ fontSize: '12px' }}>
+                                      <strong>{cls.swimmerName}</strong>: {cls.level.replace(/\s*\d+:\d+$/, "")} with Coach {getInstructorName(cls.classObj)}
+                                    </span>
+                                    <span style={{
+                                      fontSize: '11px',
+                                      fontWeight: '700',
+                                      color: openingsCount === 1 ? '#d97706' : '#16a34a',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}>
+                                      <span style={{
+                                        display: 'inline-block',
+                                        width: '6px',
+                                        height: '6px',
+                                        borderRadius: '50%',
+                                        background: openingsCount === 1 ? '#d97706' : '#16a34a'
+                                      }} />
+                                      {openingsCount} {openingsCount === 1 ? 'opening available' : 'openings available'}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
