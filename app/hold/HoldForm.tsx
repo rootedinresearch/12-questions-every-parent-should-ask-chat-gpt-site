@@ -215,23 +215,23 @@ const LEVELS: Record<AgeGroup, string[]> = {
 };
 
 const LEVEL_DESCRIPTIONS: Record<string, string> = {
-  "Tadpole 6:1": "Parent & Me water acclimation and gentle submersions.",
-  "Swimboree 4:1": "Building water trust, back floating, and independent paddle.",
-  "Seahorse 4:1": "Independent survival floating and rollovers in the water.",
-  "Starfish 4:1": "Building water confidence, breath control, and independent back float.",
-  "Minnow 4:1": "Independent back float, survival rollover, and beginner safety skills.",
-  "Turtle 1 4:1": "Streamlined push-glides, backstroke kick, and survival rollovers.",
-  "Turtle 2 6:1": "Propulsion development, freestyle arm recovery, and side breathing.",
-  "Shark 1": "Refined freestyle, backstroke, and introduction to breaststroke.",
-  "Shark 2": "Butterfly introduction, endurance, and flip turns.",
-  "Barracuda": "Advanced four-stroke mastery and pre-swim team conditioning.",
-  "Young Adult 1": "Teen water safety, breath control, and unassisted floating.",
-  "Young Adult 2": "Teen stroke development and freestyle endurance.",
-  "Young Adult 3": "Advanced teen stroke mastery and conditioning.",
-  "Adult 1": "Adult water comfort, floating, and breath management.",
-  "Adult 2": "Adult stroke mechanics, rhythmic breathing, and endurance.",
-  "Adult 3": "Advanced adult technique, multi-stroke proficiency, and fitness.",
-  "Dolphin": "Personalized adaptive lessons tailored to special needs."
+  "Tadpole 6:1": "This is our water acclimation starting level for infants & toddlers where they learn water comfort, gentle submersions, and trust with caregiver guidance.",
+  "Swimboree 4:1": "This is our progression level for toddlers where they build water confidence, independent paddling, and survival back floating.",
+  "Seahorse 4:1": "This is our advanced toddler level where swimmers master independent survival back floats, rollover breathing, and unassisted movement.",
+  "Starfish 4:1": "This is our starting level for kids (ages 3–12) where they learn to build water confidence, full submersions, and an independent back float.",
+  "Minnow 4:1": "This is our beginner water survival level for kids where they master independent back floating, rollover survival breathing, and core pool safety.",
+  "Turtle 1 4:1": "This is our stroke introduction level where swimmers build propulsion, streamlined push-glides, backstroke kick, and safe water entries.",
+  "Turtle 2 6:1": "This is our intermediate stroke level where swimmers develop freestyle propulsion, rhythmic side breathing, and backstroke mastery.",
+  "Shark 1": "This is our advanced stroke level where swimmers master continuous freestyle, backstroke, and the fundamentals of breaststroke.",
+  "Shark 2": "This is our stroke refinement level where swimmers master breaststroke, learn butterfly technique, and build endurance.",
+  "Barracuda": "This is our elite swim level where swimmers perfect all four competitive strokes and build pre-swim team endurance.",
+  "Young Adult 1": "This is our starting level for teens where they learn water safety, breath control, and independent floating in a comfortable peer environment.",
+  "Young Adult 2": "This is our teen stroke development level focusing on freestyle propulsion, rhythmic side breathing, and backstroke mechanics.",
+  "Young Adult 3": "This is our advanced teen level where swimmers master multi-stroke proficiency, fitness endurance, and speed.",
+  "Adult 1": "This is our starting level for adults where they learn water comfort, floating, breath management, and core survival safety.",
+  "Adult 2": "This is our adult stroke mechanics level where swimmers develop freestyle propulsion, side breathing, and backstroke technique.",
+  "Adult 3": "This is our advanced adult level where swimmers master continuous lap swimming, multi-stroke proficiency, and cardio conditioning.",
+  "Dolphin": "This is our personalized adaptive program tailored to individual sensory, cognitive, and physical needs with customized 1-on-1 instruction."
 };
 
 interface QuestionDef {
@@ -1702,7 +1702,7 @@ export default function HoldForm() {
         ))}
       </div>
 
-      {/* Persistent Shopping Cart & Live Pricing Top Right Widget */}
+      {/* Simplified Persistent Shopping Cart & Live Pricing Bar */}
       {swimmers.length > 0 && (
         <div
           className="persistent-cart-bar"
@@ -1712,20 +1712,19 @@ export default function HoldForm() {
             justifyContent: 'space-between',
             background: 'linear-gradient(135deg, #102774 0%, #001f5c 100%)',
             color: '#ffffff',
-            padding: '12px 18px',
-            borderRadius: '16px',
-            margin: '18px 0',
-            boxShadow: '0 6px 18px rgba(16, 39, 116, 0.12)',
-            flexWrap: 'wrap',
+            padding: '10px 16px',
+            borderRadius: '14px',
+            margin: '14px 0 18px',
+            boxShadow: '0 4px 14px rgba(16, 39, 116, 0.12)',
             gap: '12px'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div
               style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: '10px',
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
                 background: 'rgba(255, 255, 255, 0.15)',
                 display: 'grid',
                 placeItems: 'center',
@@ -1733,49 +1732,36 @@ export default function HoldForm() {
                 color: '#ffffff'
               }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="9" cy="21" r="1"></circle>
                 <circle cx="20" cy="21" r="1"></circle>
                 <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
               </svg>
             </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <strong style={{ fontSize: '13.5px', fontWeight: '850', color: '#ffffff' }}>
-                  {swimmers.length} {swimmers.length === 1 ? 'Swimmer' : 'Swimmers'}
-                </strong>
-                <span
-                  style={{
-                    background: '#e51d3b',
-                    color: '#ffffff',
-                    fontSize: '10px',
-                    fontWeight: '900',
-                    padding: '2px 7px',
-                    borderRadius: '99px',
-                    letterSpacing: '0.03em'
-                  }}
-                >
-                  {swimmers.length} {swimmers.length === 1 ? 'CLASS' : 'CLASSES'}
-                </span>
-              </div>
-              <div style={{ fontSize: '11px', color: '#93c5fd', fontWeight: '600' }}>
-                {quotePricing.items.filter(i => i.siblingDiscount > 0).length > 0
-                  ? "10% sibling discount included"
-                  : "Flat monthly subscription"}
-              </div>
-            </div>
+            <span
+              style={{
+                background: '#e51d3b',
+                color: '#ffffff',
+                fontSize: '11px',
+                fontWeight: '900',
+                padding: '3px 9px',
+                borderRadius: '99px',
+                letterSpacing: '0.04em'
+              }}
+            >
+              {swimmers.length} {swimmers.length === 1 ? 'CLASS' : 'CLASSES'}
+            </span>
           </div>
 
-          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
-              <span style={{ fontSize: '11px', color: '#93c5fd', fontWeight: '700' }}>Ongoing Tuition:</span>
+          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: '1.2' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '2px' }}>
               <strong style={{ fontSize: '17px', fontWeight: '900', color: '#ffffff' }}>
                 ${quotePricing.totalTuition.toFixed(2)}
               </strong>
-              <span style={{ fontSize: '10.5px', color: '#cbd5e1' }}>/mo</span>
+              <span style={{ fontSize: '11.5px', color: '#93c5fd', fontWeight: '700' }}>/mo</span>
             </div>
             <span style={{ fontSize: '11px', color: '#fca5a5', fontWeight: '750' }}>
-              ${quotePricing.firstMonthTotal.toFixed(2)} total due today
+              ${quotePricing.firstMonthTotal.toFixed(2)} due today
             </span>
           </div>
         </div>
@@ -2027,7 +2013,7 @@ export default function HoldForm() {
                           <td className="quote-td quote-td-disc">
                             {item.registrationDiscount > 0 ? (
                               <span className="quote-discount-badge badge-cap">
-                                Cap Limit: -${item.registrationDiscount.toFixed(2)}
+                                Sibling: -${item.registrationDiscount.toFixed(2)}
                               </span>
                             ) : "-"}
                           </td>
@@ -2108,7 +2094,7 @@ export default function HoldForm() {
 
       {step === 2 && (
         <>
-          <div className="form-section-heading"><span>1</span><div><p>Parent or guardian</p><h2>Who should we contact?</h2></div></div>
+          <div className="form-section-heading"><span>1</span><div><p>Parent or guardian</p><h2>Primary Caregiver/Parent</h2></div></div>
           <div className="form-grid two-column">
             <label>First name<input className={showValidationErrors && !family.firstName.trim() ? "invalid-field" : ""} value={family.firstName} onChange={(event) => setFamily({ ...family, firstName: event.target.value })} autoComplete="given-name" required={ENFORCE_REQUIRED_FIELDS} /></label>
             <label>Last name<input className={showValidationErrors && !family.lastName.trim() ? "invalid-field" : ""} value={family.lastName} onChange={(event) => setFamily({ ...family, lastName: event.target.value })} autoComplete="family-name" required={ENFORCE_REQUIRED_FIELDS} /></label>
@@ -2146,9 +2132,18 @@ export default function HoldForm() {
           </div>
 
           <div className="sms-consent-row" style={{ marginTop: '20px' }}>
-            <label className="checkbox-consent">
-              <input className={showValidationErrors && !family.smsConsent ? "invalid-field" : ""} checked={family.smsConsent} onChange={(event) => setFamily({ ...family, smsConsent: event.target.checked })} type="checkbox" required={ENFORCE_REQUIRED_FIELDS} />
-              <span>I consent to receive text messages from British Swim School at the mobile number provided above for scheduling and lesson coordination.</span>
+            <label className="checkbox-consent" style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
+              <input
+                style={{ marginTop: '3px', flexShrink: 0, width: '18px', height: '18px', cursor: 'pointer' }}
+                className={showValidationErrors && !family.smsConsent ? "invalid-field" : ""}
+                checked={family.smsConsent}
+                onChange={(event) => setFamily({ ...family, smsConsent: event.target.checked })}
+                type="checkbox"
+                required={ENFORCE_REQUIRED_FIELDS}
+              />
+              <span style={{ fontSize: '13px', lineHeight: '1.45', color: 'var(--ink)' }}>
+                I consent to receive text messages from British Swim School at the mobile number provided above for scheduling and lesson coordination.
+              </span>
             </label>
           </div>
 
@@ -2195,6 +2190,61 @@ export default function HoldForm() {
                 boxSizing: 'border-box'
               }}
             >
+              {/* Visual Breadcrumb Progress Stepper through the Questions */}
+              {!allComplete && (
+                <div style={{ marginBottom: '18px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                    {Array.from({ length: heroQ.totalSteps }, (_, i) => {
+                      const sNum = i + 1;
+                      const isPast = sNum < heroQ.stepNum;
+                      const isCurrent = sNum === heroQ.stepNum;
+                      return (
+                        <Fragment key={sNum}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: isCurrent ? '28px' : '24px',
+                                height: isCurrent ? '28px' : '24px',
+                                borderRadius: '50%',
+                                background: isCurrent ? '#102774' : (isPast ? '#16a34a' : '#f1f5f9'),
+                                color: isCurrent || isPast ? '#ffffff' : '#94a3b8',
+                                border: isCurrent ? '2px solid #3b82f6' : (isPast ? 'none' : '1.5px solid #cbd5e1'),
+                                fontSize: isCurrent ? '11px' : '10px',
+                                fontWeight: '900',
+                                display: 'grid',
+                                placeItems: 'center',
+                                boxShadow: isCurrent ? '0 0 0 4px rgba(16, 39, 116, 0.12)' : 'none',
+                                transition: 'all 0.25s ease'
+                              }}
+                            >
+                              {isPast ? '✓' : sNum}
+                            </div>
+                          </div>
+                          {sNum < heroQ.totalSteps && (
+                            <div
+                              style={{
+                                flex: 1,
+                                height: '3px',
+                                borderRadius: '99px',
+                                background: sNum < heroQ.stepNum ? '#16a34a' : '#e2e8f0',
+                                transition: 'all 0.25s ease'
+                              }}
+                            />
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="question-meta-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <span
                   className="question-pill-tag"
