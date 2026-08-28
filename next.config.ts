@@ -8,6 +8,16 @@ const nextConfig: NextConfig = {
         destination: "/hold",
         permanent: false,
       },
+      {
+        source: "/12-questions",
+        destination: "/guide",
+        permanent: false,
+      },
+      {
+        source: "/questions",
+        destination: "/guide",
+        permanent: false,
+      },
     ];
   },
 };

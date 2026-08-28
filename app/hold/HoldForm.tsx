@@ -3360,7 +3360,10 @@ export default function HoldForm() {
         </div>
       )}
 
-      <div className="hold-card-footer" style={{ justifyContent: 'flex-end' }}>
+      <div className="hold-card-footer" style={{ justifyContent: 'space-between', display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+        <div className="footer-links">
+          <Link href="/guide" className="footer-guide-link">12 Questions Every Parent Should Ask &rarr;</Link>
+        </div>
         <div className="footer-links">
           <Link href="/answers" className="footer-guide-link">FAQs, Makeups, and Trial Details &rarr;</Link>
         </div>

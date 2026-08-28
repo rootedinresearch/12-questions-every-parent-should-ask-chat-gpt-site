@@ -165,7 +165,12 @@ export default function AnswersPage() {
           <a href="sms:+18179735455?body=Hi%20British%20Swim%20School!%20I%20have%20a%20question%20about%20pricing%20or%20finding%20the%20right%20class.">Text us</a>
           <a href="mailto:goswimarlsgpra@britishswimschool.com?subject=Help%20finding%20the%20right%20swim%20class">Email us</a>
         </div>
-        <small>Arlington · Mansfield · Grand Prairie</small>
+        <div style={{ marginTop: '16px' }}>
+          <Link href="/guide" style={{ fontSize: '13px', color: 'var(--blue)', fontWeight: '700', textDecoration: 'underline' }}>
+            Explore the 12 Questions Every Parent Should Ask →
+          </Link>
+        </div>
+        <small style={{ marginTop: '12px', display: 'block' }}>Arlington · Mansfield · Grand Prairie</small>
       </section>
     </main>
   );
