@@ -992,14 +992,14 @@ function getPreciseRegisterUrl(
   params.set("id", "553758");
   params.set("loc", finalLoc);
 
-  // Extract all valid Jackrabbit class IDs from all swimmers in this match
+  // Extract valid Jackrabbit class IDs
   const classIds = matchedClasses
     .map(c => c.classObj.id)
     .filter(id => id && String(id).length > 4);
 
   if (classIds.length > 0) {
-    // Pass comma-separated class IDs so Jackrabbit pre-loads all classes for the siblings
-    params.set("preLoadClassID", classIds.join(","));
+    // Jackrabbit reg.asp accepts a single integer for preLoadClassID
+    params.set("preLoadClassID", String(classIds[0]));
   }
 
   // Pre-populate Parent / Primary Caregiver details
