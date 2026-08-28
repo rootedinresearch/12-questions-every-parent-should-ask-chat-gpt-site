@@ -1059,7 +1059,7 @@ function getPreciseRegisterUrl(
       params.set(`${prefix}Gender`, g.toLowerCase().startsWith("f") ? "Female" : (g.toLowerCase().startsWith("m") ? "Male" : g));
     }
     if (swimmer.dob) {
-      params.set(`${prefix}BDate`, swimmer.dob.trim());
+      params.set(`${prefix}BDate`, smartFormatDob(swimmer.dob).trim());
     }
     if (swimmer.adaptive === "yes" || swimmer.ageGroup === "dolphin") {
       params.set(`${prefix}SpecNeeds`, "Y");
