@@ -998,8 +998,9 @@ function getPreciseRegisterUrl(
     .filter(id => id && String(id).length > 4);
 
   if (classIds.length > 0) {
-    // Jackrabbit reg.asp accepts a single integer for preLoadClassID
+    // Primary class ID parameter
     params.set("preLoadClassID", String(classIds[0]));
+    params.set("ClassID", String(classIds[0]));
   }
 
   // Pre-populate Parent / Primary Caregiver details
@@ -1062,6 +1063,16 @@ function getPreciseRegisterUrl(
     }
     if (swimmer.adaptive === "yes" || swimmer.ageGroup === "dolphin") {
       params.set(`${prefix}SpecNeeds`, "Y");
+    }
+
+    // Attach specific class ID to each sibling (S1ClassID, S2ClassID, S3ClassID, S1preLoadClassID, S2preLoadClassID...)
+    const matchedCls = matchedClasses[idx];
+    if (matchedCls && matchedCls.classObj && matchedCls.classObj.id) {
+      const cId = String(matchedCls.classObj.id);
+      params.set(`${prefix}ClassID`, cId);
+      params.set(`${prefix}preLoadClassID`, cId);
+      params.set(`preLoadClassID${idx + 1}`, cId);
+      params.set(`ClassID${idx + 1}`, cId);
     }
   });
 
