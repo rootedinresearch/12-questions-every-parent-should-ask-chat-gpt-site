@@ -882,11 +882,26 @@ function parseTimeToMinutes(timeStr: string): number {
   return h * 60 + (m || 0);
 }
 
-function formatTime12h(time24: string): string {
-  if (!time24) return "";
-  const [hStr, mStr] = time24.split(":");
+function formatMinutesTo12h(totalMinutes: number): string {
+  let h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12;
+  if (h === 0) h = 12;
+  const mm = String(m).padStart(2, "0");
+  return h + ":" + mm + " " + ampm;
+}
+
+function formatTime12h(timeStr: string): string {
+  if (!timeStr) return "";
+  if (!timeStr.includes(":")) {
+    const totalMin = parseInt(timeStr, 10);
+    if (!isNaN(totalMin)) return formatMinutesTo12h(totalMin);
+    return timeStr;
+  }
+  const [hStr, mStr] = timeStr.split(":");
   let h = parseInt(hStr, 10);
-  const m = parseInt(mStr, 10);
+  const m = parseInt(mStr, 10) || 0;
   const ampm = h >= 12 ? "PM" : "AM";
   h = h % 12;
   if (h === 0) h = 12;
@@ -1595,10 +1610,16 @@ export default function HoldForm() {
                       score: 120
                     });
                   } else if (Math.max(t1, t2, t3) - Math.min(t1, t2, t3) <= 60) {
+                    const minMin = Math.min(t1, t2, t3);
+                    const maxMin = Math.max(t1, t2, t3);
+                    const timeRangeStr = minMin === maxMin
+                      ? formatMinutesTo12h(minMin)
+                      : `${formatMinutesTo12h(minMin)} & ${formatMinutesTo12h(maxMin)}`;
+
                     matches.push({
                       type: "back-to-back",
                       day: dayLabels[dayKey],
-                      timeLabel: formatTime12h(Math.min(t1, t2, t3) + "") + " - " + formatTime12h(Math.max(t1, t2, t3) + ""),
+                      timeLabel: timeRangeStr,
                       locationName: friendlyLocName,
                       locationCode: targetLocCode,
                       classes: [
