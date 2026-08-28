@@ -1399,8 +1399,8 @@ export default function HoldForm() {
   }
 
   function goToPools() {
-    if (ENFORCE_REQUIRED_FIELDS && !levelsValid) {
-      return setMessage("Please complete the starting level questions for all swimmers.");
+    if (!levelsValid) {
+      return setMessage("Please answer all placement questions to identify the starting level for each swimmer before proceeding.");
     }
     setMessage("");
     setStep(4);
@@ -1595,7 +1595,12 @@ export default function HoldForm() {
                   const t1 = parseTimeToMinutes(c1.start_time);
                   const t2 = parseTimeToMinutes(c2.start_time);
                   const t3 = parseTimeToMinutes(c3.start_time);
-                  if (t1 === t2 && t2 === t3) {
+                  
+                  const times = [t1, t2, t3];
+                  const uniqueTimes = Array.from(new Set(times)).sort((a, b) => a - b);
+                  const isContiguous30Min = uniqueTimes.every((t, i) => i === 0 || t - uniqueTimes[i - 1] === 30);
+
+                  if (uniqueTimes.length === 1) {
                     matches.push({
                       type: "same-time",
                       day: dayLabels[dayKey],
@@ -1609,12 +1614,17 @@ export default function HoldForm() {
                       ],
                       score: 120
                     });
-                  } else if (Math.max(t1, t2, t3) - Math.min(t1, t2, t3) <= 60) {
-                    const minMin = Math.min(t1, t2, t3);
-                    const maxMin = Math.max(t1, t2, t3);
-                    const timeRangeStr = minMin === maxMin
-                      ? formatMinutesTo12h(minMin)
-                      : `${formatMinutesTo12h(minMin)} & ${formatMinutesTo12h(maxMin)}`;
+                  } else if (isContiguous30Min && (uniqueTimes.length === 2 || uniqueTimes.length === 3)) {
+                    // Contiguous 30-minute lessons with no gaps between them
+                    const sortedClassEntries = [
+                      { swimmerName: s1.defaultName, level: startingLevel(s1.swimmer), classObj: c1, time: t1 },
+                      { swimmerName: s2.defaultName, level: startingLevel(s2.swimmer), classObj: c2, time: t2 },
+                      { swimmerName: s3.defaultName, level: startingLevel(s3.swimmer), classObj: c3, time: t3 }
+                    ].sort((a, b) => a.time - b.time).map(({ swimmerName, level, classObj }) => ({ swimmerName, level, classObj }));
+
+                    const timeRangeStr = uniqueTimes.length === 2
+                      ? `${formatMinutesTo12h(uniqueTimes[0])} & ${formatMinutesTo12h(uniqueTimes[1])}`
+                      : `${formatMinutesTo12h(uniqueTimes[0])} – ${formatMinutesTo12h(uniqueTimes[uniqueTimes.length - 1])}`;
 
                     matches.push({
                       type: "back-to-back",
@@ -1622,11 +1632,7 @@ export default function HoldForm() {
                       timeLabel: timeRangeStr,
                       locationName: friendlyLocName,
                       locationCode: targetLocCode,
-                      classes: [
-                        { swimmerName: s1.defaultName, level: startingLevel(s1.swimmer), classObj: c1 },
-                        { swimmerName: s2.defaultName, level: startingLevel(s2.swimmer), classObj: c2 },
-                        { swimmerName: s3.defaultName, level: startingLevel(s3.swimmer), classObj: c3 }
-                      ],
+                      classes: sortedClassEntries,
                       score: 60
                     });
                   }
@@ -2559,38 +2565,56 @@ export default function HoldForm() {
 
             {message && <p className="form-error" role="alert">{message}</p>}
 
-            <div className="wizard-actions" style={{ marginTop: '28px' }}>
-              <button type="button" className="wizard-back" onClick={() => setStep(2)}>&larr; Back</button>
-              <button
-                type="button"
-                className={levelsValid ? "wizard-submit" : "wizard-next"}
-                onClick={goToPools}
-                style={levelsValid ? {
-                  padding: '16px 36px',
-                  borderRadius: '99px',
-                  background: 'linear-gradient(180deg, #e51d3b 0%, #c8102e 100%)',
-                  color: '#fff',
-                  border: '1px solid #b30c26',
-                  fontWeight: '900',
-                  fontSize: '16px',
-                  letterSpacing: '0.01em',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '10px',
-                  boxShadow: '0 8px 24px rgba(200, 16, 46, 0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
-                  transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
-                } : {
-                  opacity: 0.7,
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <span>Choose Location &amp; Days</span>
-                <svg width={levelsValid ? "18" : "15"} height={levelsValid ? "18" : "15"} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={levelsValid ? "2.4" : "2.2"} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: '6px' }}>
-                  <path d="M6 12L10 8L6 4" />
-                </svg>
-              </button>
+            <div className="wizard-actions" style={{ marginTop: '28px', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                <button type="button" className="wizard-back" onClick={() => setStep(2)}>&larr; Back</button>
+                <button
+                  type="button"
+                  className={levelsValid ? "wizard-submit" : "wizard-next"}
+                  onClick={goToPools}
+                  style={levelsValid ? {
+                    padding: '16px 36px',
+                    borderRadius: '99px',
+                    background: 'linear-gradient(180deg, #e51d3b 0%, #c8102e 100%)',
+                    color: '#fff',
+                    border: '1px solid #b30c26',
+                    fontWeight: '900',
+                    fontSize: '16px',
+                    letterSpacing: '0.01em',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '10px',
+                    boxShadow: '0 8px 24px rgba(200, 16, 46, 0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
+                    transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+                  } : {
+                    padding: '14px 28px',
+                    borderRadius: '99px',
+                    background: '#cbd5e1',
+                    color: '#475569',
+                    border: '1px solid #94a3b8',
+                    fontWeight: '800',
+                    fontSize: '14.5px',
+                    cursor: 'not-allowed',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <span>{levelsValid ? "Continue to Location & Days" : "Complete Placement to Continue"}</span>
+                  <svg width={levelsValid ? "18" : "15"} height={levelsValid ? "18" : "15"} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={levelsValid ? "2.4" : "2.2"} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: '6px' }}>
+                    <path d="M6 12L10 8L6 4" />
+                  </svg>
+                </button>
+              </div>
+              {!levelsValid && (
+                <span style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '600' }}>
+                  * Starting level is required for each swimmer before choosing locations &amp; schedule
+                </span>
+              )}
             </div>
           </>
         );
@@ -2883,29 +2907,58 @@ export default function HoldForm() {
                       {match.classes.map((cls, cIdx) => {
                         const openingsCount = getOpeningsCount(cls.classObj);
                         return (
-                          <div className="match-class-item" key={cIdx} style={{ background: '#f8fafc', padding: '10px 14px', borderRadius: '10px', border: '1px solid #edf2f7' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                              <span className="class-info-line" style={{ fontSize: '13px', color: 'var(--navy)' }}>
-                                <strong style={{ color: 'var(--navy)' }}>{cls.swimmerName}</strong>: {cls.level.replace(/\s*\d+:\d+$/, "")} with Coach {getInstructorName(cls.classObj)}
+                          <div
+                            className="match-class-item"
+                            key={cIdx}
+                            style={{
+                              background: '#f8fafc',
+                              padding: '10px 14px',
+                              borderRadius: '10px',
+                              border: '1px solid #edf2f7',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '12px',
+                              flexWrap: 'wrap'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                              <span
+                                style={{
+                                  background: '#102774',
+                                  color: '#ffffff',
+                                  fontSize: '12px',
+                                  fontWeight: '850',
+                                  padding: '4px 9px',
+                                  borderRadius: '7px',
+                                  letterSpacing: '0.02em',
+                                  flexShrink: 0
+                                }}
+                              >
+                                {formatTime12h(cls.classObj.start_time)}
                               </span>
-                              <span style={{
-                                fontSize: '11.5px',
-                                fontWeight: '750',
-                                color: openingsCount === 1 ? '#d97706' : '#16a34a',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '5px'
-                              }}>
-                                <span style={{
-                                  display: 'inline-block',
-                                  width: '7px',
-                                  height: '7px',
-                                  borderRadius: '50%',
-                                  background: openingsCount === 1 ? '#d97706' : '#16a34a'
-                                }} />
-                                {openingsCount} {openingsCount === 1 ? 'opening available' : 'openings available'}
+                              <span className="class-info-line" style={{ fontSize: '13.5px', color: 'var(--navy)' }}>
+                                <strong style={{ color: 'var(--navy)' }}>{cls.swimmerName}</strong>: {cls.level.replace(/\s*\d+:\d+$/, "")} with Instructor {getInstructorName(cls.classObj)}
                               </span>
                             </div>
+
+                            <span style={{
+                              fontSize: '11.5px',
+                              fontWeight: '750',
+                              color: openingsCount === 1 ? '#d97706' : '#16a34a',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px'
+                            }}>
+                              <span style={{
+                                display: 'inline-block',
+                                width: '7px',
+                                height: '7px',
+                                borderRadius: '50%',
+                                background: openingsCount === 1 ? '#d97706' : '#16a34a'
+                              }} />
+                              {openingsCount} {openingsCount === 1 ? 'opening available' : 'openings available'}
+                            </span>
                           </div>
                         );
                       })}
@@ -2958,14 +3011,14 @@ export default function HoldForm() {
                             </div>
                           </div>
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <button
                               type="button"
                               onClick={() => setExpandedNearbyIndex(isExpanded ? null : idx)}
                               style={{
-                                background: isExpanded ? '#eff6ff' : '#ffffff',
+                                background: 'transparent',
                                 border: '1px solid #cbd5e1',
-                                borderRadius: '8px',
+                                borderRadius: '99px',
                                 padding: '6px 12px',
                                 fontSize: '11.5px',
                                 fontWeight: '750',
@@ -2976,7 +3029,7 @@ export default function HoldForm() {
                                 gap: '4px'
                               }}
                             >
-                              {isExpanded ? 'Hide Classes ▲' : 'View Classes ▼'}
+                              <span>{isExpanded ? 'Hide Classes ▲' : 'View Classes ▼'}</span>
                             </button>
 
                             <a
@@ -3011,29 +3064,57 @@ export default function HoldForm() {
                             {match.classes.map((cls, cIdx) => {
                               const openingsCount = getOpeningsCount(cls.classObj);
                               return (
-                                <div className="match-class-item" key={cIdx} style={{ background: '#ffffff', padding: '8px 12px', borderRadius: '8px', border: '1px solid #edf2f7' }}>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                    <span className="class-info-line" style={{ fontSize: '12px' }}>
-                                      <strong>{cls.swimmerName}</strong>: {cls.level.replace(/\s*\d+:\d+$/, "")} with Coach {getInstructorName(cls.classObj)}
+                                <div
+                                  className="match-class-item"
+                                  key={cIdx}
+                                  style={{
+                                    background: '#ffffff',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #edf2f7',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '10px',
+                                    flexWrap: 'wrap'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span
+                                      style={{
+                                        background: '#102774',
+                                        color: '#ffffff',
+                                        fontSize: '11px',
+                                        fontWeight: '850',
+                                        padding: '3px 7px',
+                                        borderRadius: '6px',
+                                        flexShrink: 0
+                                      }}
+                                    >
+                                      {formatTime12h(cls.classObj.start_time)}
                                     </span>
-                                    <span style={{
-                                      fontSize: '11px',
-                                      fontWeight: '700',
-                                      color: openingsCount === 1 ? '#d97706' : '#16a34a',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '4px'
-                                    }}>
-                                      <span style={{
-                                        display: 'inline-block',
-                                        width: '6px',
-                                        height: '6px',
-                                        borderRadius: '50%',
-                                        background: openingsCount === 1 ? '#d97706' : '#16a34a'
-                                      }} />
-                                      {openingsCount} {openingsCount === 1 ? 'opening available' : 'openings available'}
+                                    <span className="class-info-line" style={{ fontSize: '12.5px', color: 'var(--navy)' }}>
+                                      <strong>{cls.swimmerName}</strong>: {cls.level.replace(/\s*\d+:\d+$/, "")} with Instructor {getInstructorName(cls.classObj)}
                                     </span>
                                   </div>
+
+                                  <span style={{
+                                    fontSize: '11px',
+                                    fontWeight: '700',
+                                    color: openingsCount === 1 ? '#d97706' : '#16a34a',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}>
+                                    <span style={{
+                                      display: 'inline-block',
+                                      width: '6px',
+                                      height: '6px',
+                                      borderRadius: '50%',
+                                      background: openingsCount === 1 ? '#d97706' : '#16a34a'
+                                    }} />
+                                    {openingsCount} {openingsCount === 1 ? 'opening available' : 'openings available'}
+                                  </span>
                                 </div>
                               );
                             })}
