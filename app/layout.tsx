@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const poppins = localFont({
@@ -21,5 +22,12 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body className={poppins.variable}>{children}</body></html>;
+  return (
+    <html lang="en">
+      <body className={poppins.variable}>
+        {children}
+        <Analytics />
+      </body>
+    </html>
+  );
 }
