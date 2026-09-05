@@ -6,7 +6,7 @@ import { FormEvent, useState, useEffect, useMemo, Fragment } from "react";
 const LEAD_ENDPOINT = "https://script.google.com/macros/s/AKfycbyUCakByl8j40MxtKBkAqR5VT9zUbvE0-WK7Jltd47RN_MO9cIEipEXTWpW5fLQ2wqk3Q/exec";
 
 // Toggle setting: set to true to enforce required fields in production; false to bypass for testing
-const ENFORCE_REQUIRED_FIELDS = false;
+const ENFORCE_REQUIRED_FIELDS = true;
 
 const SCHOOL_SMS = "+18179735455";
 const SCHOOL_EMAIL = "goswimarlsgpra@britishswimschool.com";
@@ -1013,6 +1013,8 @@ function getPreciseRegisterUrl(
     }
     if (family.phone) params.set("MCPhone", family.phone.trim());
     params.set("MCSmsOptIn", family.smsConsent ? "Y" : "N");
+    params.set("smsOptIn", family.smsConsent ? "Y" : "N");
+    params.set("SmsOptIn", family.smsConsent ? "Y" : "N");
   }
 
   if (referral && referral.source) {
@@ -1218,12 +1220,28 @@ export default function HoldForm() {
     return calculatePricing(swimmers);
   }, [swimmers]);
 
-  function logLead(text: string) {
+  function logLead(text: string, extraData: Record<string, any> = {}) {
     if (!LEAD_ENDPOINT) return;
+
+    const currentBookingUrl = extraData.bookingUrl || (
+      swimmers.length > 0 && (family.firstName || family.phone)
+        ? getPreciseRegisterUrl(
+            [],
+            familyLocationsArray[0] || "MAN24H",
+            family,
+            referral,
+            swimmers,
+            buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
+          )
+        : ""
+    );
+
     const payload = JSON.stringify({
       leadId,
       submittedAt: new Date().toISOString(),
       message: text,
+      action: extraData.action || text,
+      bookingUrl: currentBookingUrl,
       quotedFirstMonthTotal: quotePricing.firstMonthTotal,
       quotedOngoingTuition: quotePricing.totalTuition,
       quotedRegistrationFee: quotePricing.totalRegistrationFees,
@@ -1248,7 +1266,8 @@ export default function HoldForm() {
           paceLabel
         };
       }),
-      quote: quotePricing
+      quote: quotePricing,
+      ...extraData
     });
 
     fetch(LEAD_ENDPOINT, {
@@ -1256,6 +1275,7 @@ export default function HoldForm() {
       mode: "no-cors",
       headers: { "Content-Type": "application/json" },
       body: payload,
+      keepalive: true,
     }).catch((err) => console.error("Logging failed:", err));
   }
 
@@ -1410,7 +1430,10 @@ export default function HoldForm() {
 
   function goToContact() {
     setStep(2);
-    logLead("Step 1: View Lesson Times Clicked (Quote Generated)");
+    const quoteSummary = `Ongoing: $${quotePricing.totalTuition.toFixed(2)}/mo | Due Today: $${quotePricing.firstMonthTotal.toFixed(2)} (${swimmers.length} swimmer${swimmers.length === 1 ? '' : 's'})`;
+                logLead(`Step 1 Completed: View Lesson Times Clicked (Quote: ${quoteSummary})`, {
+                  action: "View Lesson Times (Quote Generated)"
+                });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1444,7 +1467,18 @@ export default function HoldForm() {
     setMessage("");
     setActiveSwimmer(0);
     setStep(3);
-    logLead("Step 2 Completed: Profiles & Contact Info Entered");
+    const initialBookingUrl = getPreciseRegisterUrl(
+      [],
+      familyLocationsArray[0] || "MAN24H",
+      family,
+      referral,
+      swimmers,
+      buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
+    );
+    logLead("Step 2 Completed: Profiles & Contact Info Entered", {
+      action: "Contact & Profiles Submitted",
+      bookingUrl: initialBookingUrl
+    });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1454,7 +1488,10 @@ export default function HoldForm() {
     }
     setMessage("");
     setStep(4);
-    logLead("Step 3 Completed: Placement Levels Selected");
+    const levelsSummary = swimmers.map(s => `${s.firstName || "Swimmer"}: ${startingLevel(s) || s.selectedLevel || "Assessed"}`).join(", ");
+    logLead(`Step 3 Completed: Placement Levels Selected (${levelsSummary})`, {
+      action: "Placement Levels Completed"
+    });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1464,7 +1501,19 @@ export default function HoldForm() {
     }
     setMessage("");
     setStep(5);
-    logLead("Step 4 Completed: Pool & Schedule Preferences Selected");
+    const poolSummary = familyLocationsArray.join(", ");
+    const step4BookingUrl = getPreciseRegisterUrl(
+      [],
+      familyLocationsArray[0] || "MAN24H",
+      family,
+      referral,
+      swimmers,
+      buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
+    );
+    logLead(`Step 4 Completed: Pool & Schedule Preferences Selected (${poolSummary})`, {
+      action: "Review My Details (Preferences Selected)",
+      bookingUrl: step4BookingUrl
+    });
     window.scrollTo({ top: 0, behavior: "smooth" });
     
     setLoadingOpenings(true);
@@ -1751,7 +1800,28 @@ export default function HoldForm() {
     
     setComposed(text);
     setHandedOff(true);
-    logLead("Step 5 Completed: Scheduling Assistance Requested");
+    const fallbackBookingUrl = primaryMatches.length > 0
+      ? getPreciseRegisterUrl(
+          primaryMatches[0].classes,
+          primaryMatches[0].classes[0].classObj.location_code,
+          family,
+          referral,
+          swimmers,
+          buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
+        )
+      : getPreciseRegisterUrl(
+          [],
+          familyLocationsArray[0] || "MAN24H",
+          family,
+          referral,
+          swimmers,
+          buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
+        );
+
+    logLead("Step 5 Completed: Scheduling Assistance Requested", {
+      action: "Request Scheduling Assistance",
+      bookingUrl: fallbackBookingUrl
+    });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -2219,7 +2289,7 @@ export default function HoldForm() {
                 required={ENFORCE_REQUIRED_FIELDS}
               />
               <span style={{ fontSize: '13px', lineHeight: '1.45', color: 'var(--ink)' }}>
-                I consent to receive text messages from British Swim School at the mobile number provided above for scheduling and lesson coordination.
+                By providing your phone number and checking this box, you agree to receive transactional and informational SMS messages from British Swim School - Arlington-South Grand Prairie. Message frequency may vary. Message and data rates may apply. Reply STOP to opt out and HELP for help.
               </span>
             </label>
           </div>
@@ -2926,29 +2996,40 @@ export default function HoldForm() {
                       </div>
 
                       {/* Top Right Book Trial Button */}
-                      <a
-                        className="register-btn"
-                        href={getPreciseRegisterUrl(
+                      {(() => {
+                        const bookingUrlForMatch = getPreciseRegisterUrl(
                           match.classes,
                           match.classes[0].classObj.location_code,
                           family,
                           referral,
                           swimmers,
                           buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
-                        )}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          padding: '8px 18px',
-                          fontSize: '12.5px',
-                          fontWeight: '800',
-                          borderRadius: '99px',
-                          whiteSpace: 'nowrap',
-                          boxShadow: '0 4px 12px rgba(229, 29, 59, 0.25)'
-                        }}
-                      >
-                        Book 2-Class Trial ↗
-                      </a>
+                        );
+                        return (
+                          <a
+                            className="register-btn"
+                            href={bookingUrlForMatch}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={() => {
+                              logLead("Step 5 Completed: Book 2-Class Trial Clicked", {
+                                action: "Book 2-Class Trial",
+                                bookingUrl: bookingUrlForMatch
+                              });
+                            }}
+                            style={{
+                              padding: '8px 18px',
+                              fontSize: '12.5px',
+                              fontWeight: '800',
+                              borderRadius: '99px',
+                              whiteSpace: 'nowrap',
+                              boxShadow: '0 4px 12px rgba(229, 29, 59, 0.25)'
+                            }}
+                          >
+                            Book 2-Class Trial ↗
+                          </a>
+                        );
+                      })()}
                     </div>
 
                     <div className="match-classes" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -3080,28 +3161,39 @@ export default function HoldForm() {
                               <span>{isExpanded ? 'Hide Classes ▲' : 'View Classes ▼'}</span>
                             </button>
 
-                            <a
-                              className="register-btn"
-                              href={getPreciseRegisterUrl(
+                            {(() => {
+                              const bookingUrlForMatch = getPreciseRegisterUrl(
                                 match.classes,
                                 match.classes[0].classObj.location_code,
                                 family,
                                 referral,
                                 swimmers,
                                 buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
-                              )}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{
-                                padding: '6px 14px',
-                                fontSize: '11.5px',
-                                fontWeight: '800',
-                                borderRadius: '99px',
-                                whiteSpace: 'nowrap'
-                              }}
-                            >
-                              Book 2-Class Trial ↗
-                            </a>
+                              );
+                              return (
+                                <a
+                                  className="register-btn"
+                                  href={bookingUrlForMatch}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={() => {
+                                    logLead("Step 5 Completed: Book 2-Class Trial Clicked", {
+                                      action: "Book 2-Class Trial",
+                                      bookingUrl: bookingUrlForMatch
+                                    });
+                                  }}
+                                  style={{
+                                    padding: '6px 14px',
+                                    fontSize: '11.5px',
+                                    fontWeight: '800',
+                                    borderRadius: '99px',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  Book 2-Class Trial ↗
+                                </a>
+                              );
+                            })()}
                           </div>
                         </div>
 
