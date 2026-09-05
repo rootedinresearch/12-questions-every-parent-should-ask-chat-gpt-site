@@ -1430,8 +1430,9 @@ export default function HoldForm() {
 
   function goToContact() {
     setStep(2);
-    const quoteSummary = `Ongoing: $${quotePricing.totalTuition.toFixed(2)}/mo | Due Today: $${quotePricing.firstMonthTotal.toFixed(2)} (${swimmers.length} swimmer${swimmers.length === 1 ? '' : 's'})`;
-                logLead(`Step 1 Completed: View Lesson Times Clicked (Quote: ${quoteSummary})`, {
+    const quoteSummary = `Ongoing: ${quotePricing.totalTuition.toFixed(2)}/mo | Due Today: ${quotePricing.firstMonthTotal.toFixed(2)} (${swimmers.length} swimmer${swimmers.length === 1 ? '' : 's'})`;
+                const siteUrl = typeof window !== "undefined" ? window.location.href : "https://bss-12-questions-temp.vercel.app/hold";
+                logLead(`Step 1 Completed: View Lesson Times Clicked\n• Quote: ${quoteSummary}\n• Website: ${siteUrl}`, {
                   action: "View Lesson Times (Quote Generated)"
                 });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1475,7 +1476,8 @@ export default function HoldForm() {
       swimmers,
       buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
     );
-    logLead("Step 2 Completed: Profiles & Contact Info Entered", {
+    const siteUrl = typeof window !== "undefined" ? window.location.href : "https://bss-12-questions-temp.vercel.app/hold";
+    logLead(`Step 2 Completed: Profiles & Contact Info Entered\n• Booking Link: ${initialBookingUrl}\n• Website: ${siteUrl}`, {
       action: "Contact & Profiles Submitted",
       bookingUrl: initialBookingUrl
     });
@@ -1489,7 +1491,8 @@ export default function HoldForm() {
     setMessage("");
     setStep(4);
     const levelsSummary = swimmers.map(s => `${s.firstName || "Swimmer"}: ${startingLevel(s) || s.selectedLevel || "Assessed"}`).join(", ");
-    logLead(`Step 3 Completed: Placement Levels Selected (${levelsSummary})`, {
+    const siteUrl = typeof window !== "undefined" ? window.location.href : "https://bss-12-questions-temp.vercel.app/hold";
+    logLead(`Step 3 Completed: Placement Levels Selected\n• Levels: ${levelsSummary}\n• Website: ${siteUrl}`, {
       action: "Placement Levels Completed"
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1510,7 +1513,8 @@ export default function HoldForm() {
       swimmers,
       buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
     );
-    logLead(`Step 4 Completed: Pool & Schedule Preferences Selected (${poolSummary})`, {
+    const siteUrl = typeof window !== "undefined" ? window.location.href : "https://bss-12-questions-temp.vercel.app/hold";
+    logLead(`Step 4 Completed: Pool & Schedule Preferences Selected\n• Pools: ${poolSummary}\n• Booking Link: ${step4BookingUrl}\n• Website: ${siteUrl}`, {
       action: "Review My Details (Preferences Selected)",
       bookingUrl: step4BookingUrl
     });
@@ -1539,6 +1543,40 @@ export default function HoldForm() {
     locationCode: string;
     classes: { swimmerName: string; level: string; classObj: JackrabbitClass }[];
     score: number;
+  }
+
+  function getMatchClickDetails(match: CoordinatedMatch) {
+    const bookingUrl = getPreciseRegisterUrl(
+      match.classes,
+      match.classes[0].classObj.location_code,
+      family,
+      referral,
+      swimmers,
+      buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
+    );
+
+    const classListText = match.classes.map((cls, i) => {
+      const sName = cls.swimmerName || `Swimmer ${i + 1}`;
+      const level = cls.level || cls.classObj.category1 || "Level";
+      const time = cls.classObj.start_time ? ` at ${formatTime12h(cls.classObj.start_time)}` : "";
+      const classId = cls.classObj.id ? ` (Class #${cls.classObj.id})` : "";
+      return `${sName}: ${level}${time}${classId}`;
+    }).join(" | ");
+
+    const siteUrl = typeof window !== "undefined" ? window.location.href : "https://bss-12-questions-temp.vercel.app/hold";
+
+    const message = [
+      "🎯 Action: Book 2-Class Trial Clicked",
+      `📍 Location: ${match.locationName}`,
+      `📅 Schedule: ${match.day}s at ${match.timeLabel}`,
+      `🏊 Swimmers & Levels: ${classListText}`,
+      `🔗 Booking Link: ${bookingUrl}`,
+      `🌐 Website: ${siteUrl}`
+    ].join("\n");
+
+    const action = `Book 2-Class Trial (${match.locationName} - ${match.day}s at ${match.timeLabel})`;
+
+    return { bookingUrl, message, action, classListText };
   }
 
   function findMatchesForLocationList(
@@ -1818,7 +1856,15 @@ export default function HoldForm() {
           buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
         );
 
-    logLead("Step 5 Completed: Scheduling Assistance Requested", {
+    const siteUrl = typeof window !== "undefined" ? window.location.href : "https://bss-12-questions-temp.vercel.app/hold";
+    const fullAssistanceMessage = [
+      "📋 Action: Request Scheduling Assistance",
+      text,
+      `🔗 Booking Link: ${fallbackBookingUrl}`,
+      `🌐 Website: ${siteUrl}`
+    ].join("\n\n");
+
+    logLead(fullAssistanceMessage, {
       action: "Request Scheduling Assistance",
       bookingUrl: fallbackBookingUrl
     });
@@ -2997,24 +3043,18 @@ export default function HoldForm() {
 
                       {/* Top Right Book Trial Button */}
                       {(() => {
-                        const bookingUrlForMatch = getPreciseRegisterUrl(
-                          match.classes,
-                          match.classes[0].classObj.location_code,
-                          family,
-                          referral,
-                          swimmers,
-                          buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
-                        );
+                        const details = getMatchClickDetails(match);
                         return (
                           <a
                             className="register-btn"
-                            href={bookingUrlForMatch}
+                            href={details.bookingUrl}
                             target="_blank"
                             rel="noreferrer"
                             onClick={() => {
-                              logLead("Step 5 Completed: Book 2-Class Trial Clicked", {
-                                action: "Book 2-Class Trial",
-                                bookingUrl: bookingUrlForMatch
+                              logLead(details.message, {
+                                action: details.action,
+                                bookingUrl: details.bookingUrl,
+                                classDetails: details.classListText
                               });
                             }}
                             style={{
@@ -3162,24 +3202,18 @@ export default function HoldForm() {
                             </button>
 
                             {(() => {
-                              const bookingUrlForMatch = getPreciseRegisterUrl(
-                                match.classes,
-                                match.classes[0].classObj.location_code,
-                                family,
-                                referral,
-                                swimmers,
-                                buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
-                              );
+                              const details = getMatchClickDetails(match);
                               return (
                                 <a
                                   className="register-btn"
-                                  href={bookingUrlForMatch}
+                                  href={details.bookingUrl}
                                   target="_blank"
                                   rel="noreferrer"
                                   onClick={() => {
-                                    logLead("Step 5 Completed: Book 2-Class Trial Clicked", {
-                                      action: "Book 2-Class Trial",
-                                      bookingUrl: bookingUrlForMatch
+                                    logLead(details.message, {
+                                      action: details.action,
+                                      bookingUrl: details.bookingUrl,
+                                      classDetails: details.classListText
                                     });
                                   }}
                                   style={{
