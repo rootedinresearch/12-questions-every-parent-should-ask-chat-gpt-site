@@ -1236,12 +1236,21 @@ export default function HoldForm() {
         : ""
     );
 
+    const poolsFormatted = extraData.poolsFormatted || (typeof formatPoolsAndDays === "function" ? formatPoolsAndDays(familyLocationsArray, familySelectedLocationDays) : "");
+
     const payload = JSON.stringify({
       leadId,
       submittedAt: new Date().toISOString(),
       message: text,
       action: extraData.action || text,
       bookingUrl: currentBookingUrl,
+      poolsFormatted,
+      step: extraData.step,
+      step1Details: extraData.step1Details,
+      step2Details: extraData.step2Details,
+      step3Details: extraData.step3Details,
+      step4Details: extraData.step4Details,
+      step5Details: extraData.step5Details,
       quotedFirstMonthTotal: quotePricing.firstMonthTotal,
       quotedOngoingTuition: quotePricing.totalTuition,
       quotedRegistrationFee: quotePricing.totalRegistrationFees,
@@ -1431,10 +1440,20 @@ export default function HoldForm() {
   function goToContact() {
     setStep(2);
     const quoteSummary = `Ongoing: ${quotePricing.totalTuition.toFixed(2)}/mo | Due Today: ${quotePricing.firstMonthTotal.toFixed(2)} (${swimmers.length} swimmer${swimmers.length === 1 ? '' : 's'})`;
-                const siteUrl = typeof window !== "undefined" ? window.location.href : "https://bss-12-questions-temp.vercel.app/hold";
-                logLead(`Step 1 Completed: View Lesson Times Clicked\n• Quote: ${quoteSummary}\n• Website: ${siteUrl}`, {
-                  action: "View Lesson Times (Quote Generated)"
-                });
+    const swimmerBreakdown = swimmers.map((s, idx) => {
+      const pace = s.ageGroup === "dolphin"
+        ? (s.pace === "dolphin_private" ? "Private (1x/wk)" : "Semi-Private (1x/wk)")
+        : (s.pace === "unlimited" ? "Unlimited Swim" : (s.pace === "standard" ? "2x/wk" : "1x/wk"));
+      const cat = AGE_GROUPS.find(g => g.id === s.ageGroup)?.label || s.ageGroup;
+      return `Swimmer ${idx + 1} (${cat}): ${pace}`;
+    }).join(" | ");
+    const step1Text = `Ongoing: ${quotePricing.totalTuition.toFixed(2)}/mo | Due Today: ${quotePricing.firstMonthTotal.toFixed(2)} (Reg Fee: ${quotePricing.totalRegistrationFees.toFixed(2)}) | Swimmers: [${swimmerBreakdown}]`;
+    const siteUrl = typeof window !== "undefined" ? window.location.href : "https://bss-12-questions-temp.vercel.app/hold";
+    logLead(`Step 1 Completed: View Lesson Times Clicked\n• Quote: ${quoteSummary}\n• Website: ${siteUrl}`, {
+      step: 1,
+      action: "View Lesson Times (Quote Generated)",
+      step1Details: step1Text
+    });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1476,10 +1495,14 @@ export default function HoldForm() {
       swimmers,
       buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
     );
+    const swimmerDetailsText = swimmers.map((s, idx) => `${s.firstName || `Swimmer ${idx + 1}`} (DOB: ${s.dob || 'N/A'}, ${s.gender || 'N/A'})`).join(" | ");
+    const step2Text = `Parent: ${family.firstName} ${family.lastName} | Phone: ${family.phone} | Email: ${family.email} | SMS: ${family.smsConsent ? 'Yes' : 'No'} | Swimmers: [${swimmerDetailsText}]`;
     const siteUrl = typeof window !== "undefined" ? window.location.href : "https://bss-12-questions-temp.vercel.app/hold";
-    logLead(`Step 2 Completed: Profiles & Contact Info Entered\n• Booking Link: ${initialBookingUrl}\n• Website: ${siteUrl}`, {
+    logLead(`Step 2 Completed: Profiles & Contact Info Entered\n• Details: ${step2Text}\n• Enrollment Link: ${initialBookingUrl}\n• Website: ${siteUrl}`, {
+      step: 2,
       action: "Contact & Profiles Submitted",
-      bookingUrl: initialBookingUrl
+      bookingUrl: initialBookingUrl,
+      step2Details: step2Text
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -1490,10 +1513,13 @@ export default function HoldForm() {
     }
     setMessage("");
     setStep(4);
-    const levelsSummary = swimmers.map(s => `${s.firstName || "Swimmer"}: ${startingLevel(s) || s.selectedLevel || "Assessed"}`).join(", ");
+    const levelsSummary = swimmers.map(s => `${s.firstName || "Swimmer"}: ${startingLevel(s) || s.selectedLevel || "Assessed"}`).join(" | ");
+    const step3Text = `Assessed Levels: [${levelsSummary}]`;
     const siteUrl = typeof window !== "undefined" ? window.location.href : "https://bss-12-questions-temp.vercel.app/hold";
     logLead(`Step 3 Completed: Placement Levels Selected\n• Levels: ${levelsSummary}\n• Website: ${siteUrl}`, {
-      action: "Placement Levels Completed"
+      step: 3,
+      action: "Placement Levels Completed",
+      step3Details: step3Text
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -1504,7 +1530,7 @@ export default function HoldForm() {
     }
     setMessage("");
     setStep(5);
-    const poolSummary = familyLocationsArray.join(", ");
+    const poolSummary = formatPoolsAndDays(familyLocationsArray, familySelectedLocationDays);
     const step4BookingUrl = getPreciseRegisterUrl(
       [],
       familyLocationsArray[0] || "MAN24H",
@@ -1513,10 +1539,14 @@ export default function HoldForm() {
       swimmers,
       buildEnrollmentSynopsis(swimmers, quotePricing, familyLocationsArray, familySelectedLocationDays, familyScheduleNote, referral)
     );
+    const step4Text = `Locations & Days: ${poolSummary}${familyScheduleNote ? ` | Note: ${familyScheduleNote}` : ''}`;
     const siteUrl = typeof window !== "undefined" ? window.location.href : "https://bss-12-questions-temp.vercel.app/hold";
-    logLead(`Step 4 Completed: Pool & Schedule Preferences Selected\n• Pools: ${poolSummary}\n• Booking Link: ${step4BookingUrl}\n• Website: ${siteUrl}`, {
+    logLead(`Step 4 Completed: Pool & Schedule Preferences Selected\n• Pools: ${poolSummary}\n• Enrollment Link: ${step4BookingUrl}\n• Website: ${siteUrl}`, {
+      step: 4,
       action: "Review My Details (Preferences Selected)",
-      bookingUrl: step4BookingUrl
+      bookingUrl: step4BookingUrl,
+      poolsFormatted: poolSummary,
+      step4Details: step4Text
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
     
@@ -1545,6 +1575,23 @@ export default function HoldForm() {
     score: number;
   }
 
+  function formatPoolsAndDays(locIds: string[], locDays: string[]): string {
+    if (!locIds || locIds.length === 0) return "Any Location";
+
+    return locIds.map((locId) => {
+      const locObj = LOCATIONS.find(l => l.id === locId);
+      const locName = locObj ? locObj.name.replace("British Swim School at ", "") : locId;
+      const daysForLoc = locDays
+        .filter(item => item.startsWith(`${locId}:`))
+        .map(item => item.split(":")[1]);
+
+      if (daysForLoc.length > 0) {
+        return `${locName} (${daysForLoc.join(", ")})`;
+      }
+      return locName;
+    }).join(" | ");
+  }
+
   function getMatchClickDetails(match: CoordinatedMatch) {
     const bookingUrl = getPreciseRegisterUrl(
       match.classes,
@@ -1564,19 +1611,22 @@ export default function HoldForm() {
     }).join(" | ");
 
     const siteUrl = typeof window !== "undefined" ? window.location.href : "https://bss-12-questions-temp.vercel.app/hold";
+    const poolsText = formatPoolsAndDays(familyLocationsArray, familySelectedLocationDays);
+
+    const step5Text = `Step 5: Book 2-Class Trial Clicked | ${match.locationName} · ${match.day}s at ${match.timeLabel} · [${classListText}]`;
 
     const message = [
       "🎯 Action: Book 2-Class Trial Clicked",
       `📍 Location: ${match.locationName}`,
       `📅 Schedule: ${match.day}s at ${match.timeLabel}`,
       `🏊 Swimmers & Levels: ${classListText}`,
-      `🔗 Booking Link: ${bookingUrl}`,
+      `🔗 Enrollment Link: ${bookingUrl}`,
       `🌐 Website: ${siteUrl}`
     ].join("\n");
 
     const action = `Book 2-Class Trial (${match.locationName} - ${match.day}s at ${match.timeLabel})`;
 
-    return { bookingUrl, message, action, classListText };
+    return { bookingUrl, message, action, classListText, step5Text, poolsText };
   }
 
   function findMatchesForLocationList(
@@ -1857,16 +1907,22 @@ export default function HoldForm() {
         );
 
     const siteUrl = typeof window !== "undefined" ? window.location.href : "https://bss-12-questions-temp.vercel.app/hold";
+    const poolsText = formatPoolsAndDays(familyLocationsArray, familySelectedLocationDays);
+    const step5Text = `Step 5: Scheduling Assistance Requested | Preferences: ${poolsText}${familyScheduleNote ? ` | Note: ${familyScheduleNote}` : ''}`;
+
     const fullAssistanceMessage = [
       "📋 Action: Request Scheduling Assistance",
       text,
-      `🔗 Booking Link: ${fallbackBookingUrl}`,
+      `🔗 Enrollment Link: ${fallbackBookingUrl}`,
       `🌐 Website: ${siteUrl}`
     ].join("\n\n");
 
     logLead(fullAssistanceMessage, {
+      step: 5,
       action: "Request Scheduling Assistance",
-      bookingUrl: fallbackBookingUrl
+      bookingUrl: fallbackBookingUrl,
+      poolsFormatted: poolsText,
+      step5Details: step5Text
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -3052,9 +3108,12 @@ export default function HoldForm() {
                             rel="noreferrer"
                             onClick={() => {
                               logLead(details.message, {
+                                step: 5,
                                 action: details.action,
                                 bookingUrl: details.bookingUrl,
-                                classDetails: details.classListText
+                                classDetails: details.classListText,
+                                poolsFormatted: details.poolsText,
+                                step5Details: details.step5Text
                               });
                             }}
                             style={{
@@ -3210,12 +3269,15 @@ export default function HoldForm() {
                                   target="_blank"
                                   rel="noreferrer"
                                   onClick={() => {
-                                    logLead(details.message, {
-                                      action: details.action,
-                                      bookingUrl: details.bookingUrl,
-                                      classDetails: details.classListText
-                                    });
-                                  }}
+                                  logLead(details.message, {
+                                    step: 5,
+                                    action: details.action,
+                                    bookingUrl: details.bookingUrl,
+                                    classDetails: details.classListText,
+                                    poolsFormatted: details.poolsText,
+                                    step5Details: details.step5Text
+                                  });
+                                }}
                                   style={{
                                     padding: '6px 14px',
                                     fontSize: '11.5px',
