@@ -261,34 +261,22 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
   const name = rawName || "the swimmer";
   const namePossessive = rawName ? `${rawName}'s` : "the swimmer's";
 
-  // --- Q0: Adaptive / Modified Screening Question ---
-  if (!swimmer.adaptive) {
-    const total = swimmer.ageGroup === "child" ? 6 : (swimmer.ageGroup === "under3" ? (under24m ? 3 : 5) : 5);
-    return {
-      key: "adaptive",
-      text: `Does ${name} need a modified or adaptive lesson?`,
-      stepNum: 1,
-      totalSteps: total
-    };
-  }
-  if (swimmer.adaptive === "yes") return null; // -> Dolphin (Requests Private or Semi-Private)
-
   // --- Child (3-24 Months) Workflow ---
   if (swimmer.ageGroup === "under3" && under24m) {
     if (!swimmer.firstProgram) {
       return {
         key: "firstProgram",
         text: `Is this ${namePossessive} first time in swim lessons?`,
-        stepNum: 2,
-        totalSteps: 3
+        stepNum: 1,
+        totalSteps: 2
       };
     }
     if (!swimmer.comfortable) {
       return {
         key: "comfortable",
         text: `Is ${name} comfortable in the water and can they fully submerge their head?`,
-        stepNum: 3,
-        totalSteps: 3
+        stepNum: 2,
+        totalSteps: 2
       };
     }
     return null; // NO -> Tadpole 6:1, YES -> Swimboree 4:1
@@ -300,8 +288,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "firstProgram",
         text: `Is this ${namePossessive} first time in swim lessons?`,
-        stepNum: 2,
-        totalSteps: 5
+        stepNum: 1,
+        totalSteps: 4
       };
     }
     if (swimmer.firstProgram === "yes") return null; // -> Tadpole 6:1
@@ -310,8 +298,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "comfortable",
         text: `Is ${name} comfortable in the water and can they fully submerge their head?`,
-        stepNum: 3,
-        totalSteps: 5
+        stepNum: 2,
+        totalSteps: 4
       };
     }
     if (swimmer.comfortable === "no") return null; // -> Tadpole 6:1
@@ -320,8 +308,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "separateCaregiver",
         text: `Can ${name} separate from parent/caregiver and work directly with our instructors?`,
-        stepNum: 4,
-        totalSteps: 5
+        stepNum: 3,
+        totalSteps: 4
       };
     }
     if (swimmer.separateCaregiver === "no") return null; // -> Swimboree 4:1
@@ -330,8 +318,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "waitTurn",
         text: `Can ${name} sit on the edge of the pool and wait independently for their turn?`,
-        stepNum: 5,
-        totalSteps: 5
+        stepNum: 4,
+        totalSteps: 4
       };
     }
     return null; // NO -> Swimboree 4:1, YES -> Seahorse 4:1
@@ -343,8 +331,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "firstProgram",
         text: `Is this ${namePossessive} first time in swim lessons?`,
-        stepNum: 2,
-        totalSteps: 6
+        stepNum: 1,
+        totalSteps: 5
       };
     }
     if (swimmer.firstProgram === "yes") return null; // -> Starfish 4:1
@@ -353,8 +341,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "comfortable",
         text: `Is ${name} comfortable in the water and fully able to submerge their head?`,
-        stepNum: 3,
-        totalSteps: 6
+        stepNum: 2,
+        totalSteps: 5
       };
     }
     if (swimmer.comfortable === "no") return null; // -> Starfish 4:1
@@ -363,8 +351,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "floatUnassisted",
         text: `Is ${name} able to float on their back unassisted without a life vest?`,
-        stepNum: 4,
-        totalSteps: 6
+        stepNum: 3,
+        totalSteps: 5
       };
     }
     if (swimmer.floatUnassisted === "no") return null; // -> Starfish 4:1
@@ -373,8 +361,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "jumpRollFloat",
         text: `Is ${name} able to jump in, roll over and float without assistance?`,
-        stepNum: 5,
-        totalSteps: 6
+        stepNum: 4,
+        totalSteps: 5
       };
     }
     if (swimmer.jumpRollFloat === "no") return null; // -> Minnow 4:1
@@ -383,8 +371,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "swimFreestyleBackstroke",
         text: `Can ${name} swim freestyle and backstroke with their arms out of the water?`,
-        stepNum: 6,
-        totalSteps: 6
+        stepNum: 5,
+        totalSteps: 5
       };
     }
     return null; // NO -> Turtle 1 4:1, YES -> Turtle 2 6:1
@@ -396,8 +384,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "firstProgram",
         text: `Is this ${namePossessive} first time in swim lessons?`,
-        stepNum: 2,
-        totalSteps: 5
+        stepNum: 1,
+        totalSteps: 4
       };
     }
     if (swimmer.firstProgram === "yes") return null; // -> Young Adult 1
@@ -406,8 +394,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "comfortable",
         text: `Is ${name} comfortable in the water and can they float on their back by themselves?`,
-        stepNum: 3,
-        totalSteps: 5
+        stepNum: 2,
+        totalSteps: 4
       };
     }
     if (swimmer.comfortable === "no") return null; // -> Young Adult 1
@@ -416,8 +404,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "faceInWater",
         text: `Can ${name} put their face in the water and hold their breath?`,
-        stepNum: 4,
-        totalSteps: 5
+        stepNum: 3,
+        totalSteps: 4
       };
     }
     if (swimmer.faceInWater === "no") return null; // -> Young Adult 1
@@ -426,8 +414,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "swimTenYardsSideBreath",
         text: `Can ${name} swim 10 yards of freestyle and backstroke with their face in the water and utilizing a side breath?`,
-        stepNum: 5,
-        totalSteps: 5
+        stepNum: 4,
+        totalSteps: 4
       };
     }
     return null; // NO -> Young Adult 2, YES -> Young Adult 3
@@ -439,8 +427,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "firstProgram",
         text: rawName ? `Has ${rawName} had structured swim lessons before?` : "Have you had swim lessons before?",
-        stepNum: 2,
-        totalSteps: 5
+        stepNum: 1,
+        totalSteps: 4
       };
     }
     if (swimmer.firstProgram === "no") return null; // If NO (first time) -> Adult 1
@@ -449,8 +437,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "floatUnassisted",
         text: rawName ? `Can ${rawName} float on their back for 20 seconds?` : "Can you float on your back by yourself for 20 seconds?",
-        stepNum: 3,
-        totalSteps: 5
+        stepNum: 2,
+        totalSteps: 4
       };
     }
     if (swimmer.floatUnassisted === "no") return null; // -> Adult 1
@@ -459,8 +447,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "treadMinute",
         text: rawName ? `Can ${rawName} tread water for 1 minute?` : "Can you tread water for 1 minute?",
-        stepNum: 4,
-        totalSteps: 5
+        stepNum: 3,
+        totalSteps: 4
       };
     }
     if (swimmer.treadMinute === "no") return null; // -> Adult 2
@@ -469,8 +457,8 @@ function getNextQuestion(swimmer: Swimmer): QuestionDef | null {
       return {
         key: "swimFreestyleBackstroke",
         text: rawName ? `Can ${rawName} swim freestyle and backstroke with arms out of the water?` : "Can you swim the freestyle and backstroke with your arms out of the water?",
-        stepNum: 5,
-        totalSteps: 5
+        stepNum: 4,
+        totalSteps: 4
       };
     }
     return null; // NO -> Adult 2, YES -> Adult 3
@@ -510,17 +498,16 @@ function getUnifiedHeroQuestion(swimmers: Swimmer[]): UnifiedHeroQuestion {
     stepNum: number;
     totalSteps: number;
   }> = [
-    { key: "adaptive", collectiveTitle: "Do any swimmers need a modified or adaptive lesson?", stepNum: 1, totalSteps: 6 },
-    { key: "firstProgram", collectiveTitle: "Is this their first time in structured swim lessons?", stepNum: 2, totalSteps: 6 },
-    { key: "comfortable", collectiveTitle: "Are they comfortable in the water and able to submerge their head?", stepNum: 3, totalSteps: 6 },
-    { key: "floatUnassisted", collectiveTitle: "Can they float on their back unassisted without a life vest?", stepNum: 4, totalSteps: 6 },
-    { key: "separateCaregiver", collectiveTitle: "Can they separate from parent/caregiver and work directly with instructors?", stepNum: 4, totalSteps: 6 },
-    { key: "faceInWater", collectiveTitle: "Can they put their face in the water and hold their breath?", stepNum: 4, totalSteps: 6 },
-    { key: "jumpRollFloat", collectiveTitle: "Are they able to jump in, roll over and float without assistance?", stepNum: 5, totalSteps: 6 },
-    { key: "swimTenYardsSideBreath", collectiveTitle: "Can they swim 10 yards of freestyle and backstroke with face in water & side breath?", stepNum: 5, totalSteps: 6 },
-    { key: "treadMinute", collectiveTitle: "Can they tread water for 1 minute?", stepNum: 5, totalSteps: 6 },
-    { key: "waitTurn", collectiveTitle: "Can they sit on the edge of the pool and wait independently for their turn?", stepNum: 5, totalSteps: 6 },
-    { key: "swimFreestyleBackstroke", collectiveTitle: "Can they swim freestyle and backstroke with their arms out of the water?", stepNum: 6, totalSteps: 6 },
+    { key: "firstProgram", collectiveTitle: "Is this their first time in structured swim lessons?", stepNum: 1, totalSteps: 5 },
+    { key: "comfortable", collectiveTitle: "Are they comfortable in the water and able to submerge their head?", stepNum: 2, totalSteps: 5 },
+    { key: "floatUnassisted", collectiveTitle: "Can they float on their back unassisted without a life vest?", stepNum: 3, totalSteps: 5 },
+    { key: "separateCaregiver", collectiveTitle: "Can they separate from parent/caregiver and work directly with instructors?", stepNum: 3, totalSteps: 5 },
+    { key: "faceInWater", collectiveTitle: "Can they put their face in the water and hold their breath?", stepNum: 3, totalSteps: 5 },
+    { key: "jumpRollFloat", collectiveTitle: "Are they able to jump in, roll over and float without assistance?", stepNum: 4, totalSteps: 5 },
+    { key: "swimTenYardsSideBreath", collectiveTitle: "Can they swim 10 yards of freestyle and backstroke with face in water & side breath?", stepNum: 4, totalSteps: 5 },
+    { key: "treadMinute", collectiveTitle: "Can they tread water for 1 minute?", stepNum: 4, totalSteps: 5 },
+    { key: "waitTurn", collectiveTitle: "Can they sit on the edge of the pool and wait independently for their turn?", stepNum: 4, totalSteps: 5 },
+    { key: "swimFreestyleBackstroke", collectiveTitle: "Can they swim freestyle and backstroke with their arms out of the water?", stepNum: 5, totalSteps: 5 },
   ];
 
   // Find active stage: first stage where at least one pending swimmer has it as their current question
@@ -568,11 +555,15 @@ function getUnifiedHeroQuestion(swimmers: Swimmer[]): UnifiedHeroQuestion {
 
   let title = activeStage.collectiveTitle;
   let subtitle = singlePending && rawName ? `Answering for ${rawName}:` : "Select Yes or No for each swimmer below:";
+  let stepNum = activeStage.stepNum;
+  let totalSteps = activeStage.totalSteps;
 
   if (singlePending && rawName) {
     const singleQ = getNextQuestion(pending[0]);
     if (singleQ) {
       title = singleQ.text;
+      stepNum = singleQ.stepNum;
+      totalSteps = singleQ.totalSteps;
     }
   }
 
@@ -580,8 +571,8 @@ function getUnifiedHeroQuestion(swimmers: Swimmer[]): UnifiedHeroQuestion {
     title,
     subtitle,
     isComplete: false,
-    stepNum: activeStage.stepNum,
-    totalSteps: activeStage.totalSteps,
+    stepNum,
+    totalSteps,
     activeKey,
     swimmerKeys
   };
@@ -1298,18 +1289,7 @@ export default function HoldForm() {
 
     const patch: Partial<Swimmer> = { [key]: answer, placementMode: "assessment" };
 
-    if (key === "adaptive") {
-      patch.firstProgram = "";
-      patch.comfortable = "";
-      patch.separateCaregiver = "";
-      patch.waitTurn = "";
-      patch.floatUnassisted = "";
-      patch.jumpRollFloat = "";
-      patch.swimFreestyleBackstroke = "";
-      patch.faceInWater = "";
-      patch.swimTenYardsSideBreath = "";
-      patch.treadMinute = "";
-    } else if (key === "firstProgram") {
+    if (key === "firstProgram") {
       patch.comfortable = "";
       patch.separateCaregiver = "";
       patch.waitTurn = "";

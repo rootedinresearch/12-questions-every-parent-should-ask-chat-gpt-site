@@ -3,19 +3,11 @@
 ## Overview
 This document outlines the decision tree for placing students into the correct swim level. 
 
-Before evaluating age-specific skill questions, the assessment asks if the student needs a modified or adaptive lesson. If so, they are placed directly into the **Dolphin** program with options for a **Private** or **Semi-Private** lesson. Otherwise, the workflow proceeds to their age group's sequential skill questions.
+Students whose parents explicitly choose **Adaptive/Special Needs (Dolphin)** at Step 1 are placed directly into the **Dolphin** program with options for a **Private** or **Semi-Private** lesson. For all other age groups, the assessment proceeds directly to their age group's sequential skill questions.
 
 ---
 
-## 1. Initial Screening (All Age Groups)
-
-**Q0: Does the swimmer need a modified or adaptive lesson?**
-- If **YES** -> **Result: Dolphin** (Requests Private Lesson or Semi-Private Lesson).
-- If **NO** -> Proceed to their age group workflow below.
-
----
-
-## 2. Age Categorization & Skill Workflows
+## 1. Age Categorization & Skill Workflows
 
 ### Child (3–24 Months) Workflow
 **Q1: First time in Swim lessons?**

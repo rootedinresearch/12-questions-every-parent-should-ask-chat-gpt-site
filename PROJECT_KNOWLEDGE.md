@@ -35,12 +35,11 @@
   - Swimmers displayed in clean columns side-by-side with progressive interactive questions.
   - **Subquestions Removed**: Questions display clean, direct prompts without redundant subtitles/subquestions.
   - **Assessment Navigation**: The previous questions button is labeled **"← Back"**.
-  - **Dynamic Next Step Button**: The *"Choose Location & Days"* button stays subtle and compact while questions are being answered, and automatically expands into a **large, prominent 3D red button** as soon as all swimmer levels have been identified.
-  - **Personalized Student Name**: Every question dynamically incorporates the swimmer's first name (e.g., *"Does Marco need a modified or adaptive lesson?"*, *"Is this Marco's first time in swim lessons?"*, *"Can Marco float on his back...?"*), falling back to "the swimmer" if omitted.
+  - **Personalized Student Name**: Every question dynamically incorporates the swimmer's first name (e.g., *"Is this Marco's first time in swim lessons?"*, *"Can Marco float on his back...?"*), falling back to "the swimmer" if omitted.
   - **Ratio Context Banner (Assessment-Only)**: In Step 3 placement result cards, any level with a ratio displays: `"Student to instructor ratio of 4:1 max in this level."` (or 6:1 max). This note is strictly scoped to the assessment and omitted from the class coordination page in Step 5.
-  - **Q0 (All Age Groups)**: *Does [Swimmer Name] need a modified or adaptive lesson?*
-    - If **YES** -> **Result: Dolphin** (Requests Private Lesson or Semi-Private Lesson).
-    - If **NO** -> Proceeds to their age group workflow below:
+  - **Sequential Assessment Workflows by Age Group**:
+    - Swimmers with adaptive / auxiliary needs are designated directly via the Step 1 **Adaptive/Special Needs (Dolphin)** category, bypassing sequential questions into the Dolphin track.
+    - All other age groups proceed straight to skill-based questions:
   - **Child (3–24 Months)**:
     - Q1: First time in Swim lessons? -> Proceed to Q2
     - Q2: Are they comfortable in water & can fully submerge head? -> NO: `Tadpole 6:1`, YES: `Swimboree 4:1`
